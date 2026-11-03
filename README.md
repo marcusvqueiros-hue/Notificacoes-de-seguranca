@@ -31,6 +31,7 @@ Sem Supabase configurado, o `bun dev` usa dados locais fictícios. Login de demo
    - `supabase/schema.sql` (**antes, troque a senha do administrador inicial dentro do arquivo**)
    - `supabase/02_usuarios.sql`
    - `supabase/03_primeiro_acesso.sql`
+   - `supabase/04_anexos_pdf.sql` (PDF e observações das notificações)
    - `supabase/seed.sql` (opcional: dados fictícios)
 
 As tabelas têm RLS ativa **sem policies**: a chave pública não lê nem escreve nada diretamente. Todo acesso passa por funções `SECURITY DEFINER` que exigem token de sessão; senhas ficam em hash bcrypt.
