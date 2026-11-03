@@ -72,6 +72,10 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
 
   async function submit(e: FormEvent) {
     e.preventDefault()
+    if ((pdfFile || obs.trim()) && num == null) {
+      notify('Informe o nº da notificação para gravar o PDF e as observações.', 'err')
+      return
+    }
     setBusy(true)
     try {
       await saveRow({ ...f, eletricistas: elet })
@@ -138,16 +142,14 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
       <div className="col-span-2 md:col-span-4">
         <Field label="Notificação em PDF">
           <div className="rounded-xl border border-dashed border-line bg-surface2 p-3">
-            {num == null ? (
-              <p className="text-xs text-muted">Informe o nº da notificação para anexar o PDF.</p>
-            ) : (
+            {(
               <div className="flex flex-wrap items-center gap-2">
                 {pdfFile ? (
                   <span className="inline-flex items-center gap-2 rounded-lg bg-good/15 px-3 py-1.5 text-xs font-semibold text-good"><FileText size={14} /> {pdfFile.name} · {fmtSize(pdfFile.size)}</span>
                 ) : hasPdf && !removePdf ? (
-                  <span className="inline-flex items-center gap-2 rounded-lg bg-info/15 px-3 py-1.5 text-xs font-semibold text-info"><FileText size={14} /> PDF anexado à notificação {num}</span>
+                  <span className="inline-flex items-center gap-2 rounded-lg bg-info/15 px-3 py-1.5 text-xs font-semibold text-info"><FileText size={14} /> PDF já anexado à notificação {num}</span>
                 ) : (
-                  <span className="text-xs text-muted">Nenhum PDF anexado (máximo de 4 MB).</span>
+                  <span className="text-xs text-muted">Nenhum PDF anexado · arquivo .pdf de até 4 MB</span>
                 )}
                 <label className="btn !px-3 !py-1.5 cursor-pointer text-xs">
                   <Paperclip size={14} /> {hasPdf || pdfFile ? 'Substituir PDF' : 'Anexar PDF'}
@@ -163,6 +165,7 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
                 {removePdf && <button type="button" className="text-xs text-muted underline" onClick={() => setRemovePdf(false)}>manter o PDF</button>}
               </div>
             )}
+            {num == null && pdfFile && <p className="mt-2 text-xs text-warn">Preencha o nº da notificação: o PDF é gravado junto com ele.</p>}
             {pdfErr && <p role="alert" className="mt-2 text-xs text-bad">{pdfErr}</p>}
           </div>
         </Field>
@@ -174,8 +177,7 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
             rows={3}
             maxLength={4000}
             className="input"
-            disabled={num == null}
-            placeholder={num == null ? 'Informe o nº da notificação para registrar observações.' : 'Observações sobre esta notificação (visível só para administradores)…'}
+            placeholder="Observações sobre esta notificação (visível só para administradores)…"
             value={obs}
             onChange={(e) => setObs(e.target.value)}
           />
