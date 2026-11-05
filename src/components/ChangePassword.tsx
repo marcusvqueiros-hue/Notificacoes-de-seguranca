@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { motion } from 'motion/react'
 import { Check, Eye, EyeOff, KeyRound, Loader2, LogOut, TriangleAlert } from 'lucide-react'
 import { useStore } from '../lib/store'
-import { GridCanvas } from './LoginScreen'
+import { SafetyBackground } from './SafetyBackground'
 import { BrandLogo } from './BrandLogo'
 import { Modal } from './ui'
 
@@ -118,7 +118,7 @@ export function ChangePasswordScreen() {
     <div className="relative grid min-h-full place-items-center overflow-hidden bg-[#0a0710] p-4 text-white">
       <div className="absolute -top-40 -left-32 h-[34rem] w-[34rem] rounded-full bg-[#c8102e] opacity-40 blur-[120px]" />
       <div className="absolute -right-40 -bottom-48 h-[38rem] w-[38rem] rounded-full bg-[#f2a900] opacity-20 blur-[130px]" />
-      <GridCanvas />
+      <SafetyBackground />
       <motion.div
         initial={{ opacity: 0, y: 30, scale: 0.97 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}

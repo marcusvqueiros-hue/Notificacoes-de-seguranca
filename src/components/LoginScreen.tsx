@@ -1,84 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { motion, useAnimation } from 'motion/react'
 import { Eye, EyeOff, Lock, User, Loader2, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { useStore } from '../lib/store'
 import { isMisconfigured } from '../lib/data'
 import { BrandLogo } from './BrandLogo'
-
-/** Rede elétrica animada: nós em movimento, linhas e pulsos de energia percorrendo as conexões. */
-export function GridCanvas() {
-  const ref = useRef<HTMLCanvasElement>(null)
-  useEffect(() => {
-    const cv = ref.current!
-    const ctx = cv.getContext('2d')!
-    let w = 0, h = 0, raf = 0
-    const mouse = { x: -999, y: -999 }
-    type Node = { x: number; y: number; vx: number; vy: number }
-    type Pulse = { a: number; b: number; t: number; s: number }
-    let nodes: Node[] = []
-    let pulses: Pulse[] = []
-    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
-
-    const resize = () => {
-      const dpr = Math.min(devicePixelRatio || 1, 2)
-      w = cv.clientWidth
-      h = cv.clientHeight
-      cv.width = w * dpr
-      cv.height = h * dpr
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-      const n = Math.round(Math.min(90, (w * h) / 15000))
-      nodes = Array.from({ length: n }, () => ({ x: Math.random() * w, y: Math.random() * h, vx: (Math.random() - 0.5) * 0.35, vy: (Math.random() - 0.5) * 0.35 }))
-    }
-    const link = 150
-    const frame = () => {
-      ctx.clearRect(0, 0, w, h)
-      for (const p of nodes) {
-        const dx = p.x - mouse.x, dy = p.y - mouse.y
-        const d = Math.hypot(dx, dy)
-        if (d < 140) { p.vx += (dx / d) * 0.04; p.vy += (dy / d) * 0.04 }
-        p.vx *= 0.995; p.vy *= 0.995
-        p.x += p.vx; p.y += p.vy
-        if (p.x < 0 || p.x > w) p.vx *= -1
-        if (p.y < 0 || p.y > h) p.vy *= -1
-      }
-      const edges: [number, number][] = []
-      for (let i = 0; i < nodes.length; i++)
-        for (let j = i + 1; j < nodes.length; j++) {
-          const d = Math.hypot(nodes[i].x - nodes[j].x, nodes[i].y - nodes[j].y)
-          if (d < link) {
-            edges.push([i, j])
-            ctx.strokeStyle = `rgba(255,120,150,${(1 - d / link) * 0.28})`
-            ctx.lineWidth = 1
-            ctx.beginPath(); ctx.moveTo(nodes[i].x, nodes[i].y); ctx.lineTo(nodes[j].x, nodes[j].y); ctx.stroke()
-          }
-        }
-      if (!reduce && edges.length && pulses.length < 26 && Math.random() < 0.18) {
-        const [a, b] = edges[Math.floor(Math.random() * edges.length)]
-        pulses.push({ a, b, t: 0, s: 0.012 + Math.random() * 0.016 })
-      }
-      pulses = pulses.filter((p) => (p.t += p.s) < 1)
-      for (const p of pulses) {
-        const A = nodes[p.a], B = nodes[p.b]
-        const x = A.x + (B.x - A.x) * p.t, y = A.y + (B.y - A.y) * p.t
-        const g = ctx.createRadialGradient(x, y, 0, x, y, 12)
-        g.addColorStop(0, 'rgba(255,214,90,0.95)'); g.addColorStop(1, 'rgba(255,214,90,0)')
-        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 12, 0, 7); ctx.fill()
-      }
-      for (const p of nodes) {
-        ctx.fillStyle = 'rgba(255,170,190,0.7)'
-        ctx.beginPath(); ctx.arc(p.x, p.y, 1.8, 0, 7); ctx.fill()
-      }
-      raf = requestAnimationFrame(frame)
-    }
-    const move = (e: PointerEvent) => { mouse.x = e.clientX; mouse.y = e.clientY }
-    resize()
-    frame()
-    addEventListener('resize', resize)
-    addEventListener('pointermove', move)
-    return () => { cancelAnimationFrame(raf); removeEventListener('resize', resize); removeEventListener('pointermove', move) }
-  }, [])
-  return <canvas ref={ref} className="absolute inset-0 h-full w-full" />
-}
+import { SafetyBackground } from './SafetyBackground'
 
 export function Logo({ size = 44 }: { size?: number }) {
   return (
@@ -135,7 +61,7 @@ export function LoginScreen() {
         transition={{ duration: 19, repeat: Infinity, ease: 'easeInOut' }}
       />
       <div className="absolute inset-0 [background:radial-gradient(ellipse_at_center,transparent_30%,#0a0710_95%)]" />
-      <GridCanvas />
+      <SafetyBackground />
 
       <motion.div animate={shake} className="relative z-10 w-full max-w-[26rem]">
         <motion.div
@@ -146,7 +72,7 @@ export function LoginScreen() {
         >
           <div className="flex flex-col items-center gap-2">
             <div style={{ animation: 'floaty 5s ease-in-out infinite' }}><BrandLogo height={52} onDark /></div>
-            <div className="text-xs text-white/55">Gestão de notificações e multas</div>
+            <div className="text-xs text-white/55">Notificações de segurança</div>
           </div>
 
           <h1 className="mt-7 text-center font-display text-2xl font-semibold">Bem-vindo de volta</h1>
