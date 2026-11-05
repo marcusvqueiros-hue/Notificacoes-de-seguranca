@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { Download, ExternalLink, FileSpreadsheet, FileText, Loader2, Paperclip, Pencil, Plus, Search, StickyNote, Trash2 } from 'lucide-react'
+import { Copy, Download, ExternalLink, FileSpreadsheet, FileText, Loader2, Paperclip, Pencil, Plus, Search, StickyNote, Trash2 } from 'lucide-react'
 import { useStore } from '../lib/store'
 import { useData } from '../lib/hooks'
 import { uniq } from '../lib/aggregate'
@@ -7,6 +7,7 @@ import { fmtBRL, fmtDate, fmtNum, short } from '../lib/format'
 import { Field, Modal, Panel, useDebounced } from '../components/ui'
 import { DataTable, type Col } from '../components/DataTable'
 import { Badge } from './Overview'
+import { matchRows, planCleanup } from '../lib/dedupe'
 import { CollaboratorInput } from '../components/CollaboratorInput'
 import { PDF_MAX_BYTES, obsList, obsSave, openPdf, pdfDelete, pdfGet, pdfNumeros, pdfSave, type Obs } from '../lib/extras'
 import type { Notificacao, NotificacaoInput } from '../lib/types'
@@ -199,8 +200,8 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
 }
 
 export function Records() {
-  const { filtered } = useData()
-  const { session, deleteRow, notify, importRows } = useStore()
+  const { rows: allRows, filtered } = useData()
+  const { session, deleteRow, saveRow, notify, importRows } = useStore()
   const admin = session?.role === 'admin'
   const [q, setQ] = useState('')
   const dq = useDebounced(q)
@@ -220,6 +221,33 @@ export function Records() {
     } catch { /* PDF/observações exigem o SQL 04_anexos_pdf.sql; a lista continua funcionando */ }
   }, [session])
   useEffect(() => { if (admin) void loadExtras() }, [admin, loadExtras])
+
+  const cleanup = useMemo(() => (admin ? planCleanup(allRows) : null), [admin, allRows])
+  const [fixOpen, setFixOpen] = useState(false)
+  const [fixBusy, setFixBusy] = useState('')
+
+  async function runCleanup() {
+    if (!cleanup) return
+    try {
+      let n = 0
+      const total = cleanup.fills.length + cleanup.dup.length
+      for (const f of cleanup.fills) {
+        setFixBusy(`Atualizando ${++n} de ${total}…`)
+        await saveRow({ ...f.existing, notificacao: f.incoming.notificacao, inspecao: f.existing.inspecao ?? f.incoming.inspecao })
+        await deleteRow(f.incoming.id)
+      }
+      for (const r of cleanup.dup) {
+        setFixBusy(`Removendo ${++n} de ${total}…`)
+        await deleteRow(r.id)
+      }
+      notify(`${cleanup.dup.length} itens duplicados removidos${cleanup.fills.length ? ` e ${cleanup.fills.length} nº preenchido` : ''}.`)
+      setFixOpen(false)
+    } catch (e) {
+      notify((e as Error).message, 'err')
+    } finally {
+      setFixBusy('')
+    }
+  }
 
   async function openPdfOf(n: number) {
     try {
@@ -292,9 +320,24 @@ export function Records() {
       const { parseWorkbook } = await import('../lib/importXlsx')
       const parsed = await parseWorkbook(f)
       if (!parsed.length) throw new Error('Nenhuma linha válida encontrada.')
-      if (!confirm(`Importar ${parsed.length} itens da planilha? Eles serão ADICIONADOS aos registros existentes.`)) return
-      await importRows(parsed)
-      notify(`${parsed.length} itens importados.`)
+      // a planilha traz todo o histórico: só entra o que ainda não está cadastrado
+      const { matched, fills, novos } = matchRows(allRows, parsed)
+      if (!novos.length && !fills.length) {
+        notify(`Nenhuma notificação nova: os ${parsed.length} itens da planilha já estão cadastrados.`)
+        return
+      }
+      const msg = [
+        `A planilha tem ${parsed.length} itens:`,
+        `• ${matched.length} já cadastrados (ignorados)`,
+        `• ${novos.length} novos (serão adicionados)`,
+        fills.length ? `• ${fills.length} já cadastrados sem nº, que agora têm nº (serão atualizados)` : '',
+        '',
+        'Continuar?',
+      ].filter((l, i) => l || i === 4).join('\n')
+      if (!confirm(msg)) return
+      for (const f of fills) await saveRow({ ...f.existing, notificacao: f.incoming.notificacao, inspecao: f.existing.inspecao ?? f.incoming.inspecao })
+      if (novos.length) await importRows(novos)
+      notify(`${novos.length} novas notificações importadas${fills.length ? ` e ${fills.length} atualizadas` : ''}. ${matched.length} já existiam.`)
     } catch (e) {
       notify((e as Error).message, 'err')
     } finally {
@@ -312,6 +355,7 @@ export function Records() {
         </div>
         <span className="text-xs text-muted">{fmtNum(list.length)} registros</span>
         <div className="ml-auto flex flex-wrap gap-2">
+          {cleanup && <button className="btn btn-danger" onClick={() => setFixOpen(true)}><Copy size={16} /> Corrigir duplicados ({cleanup.dup.length + cleanup.fills.length})</button>}
           <button className="btn" onClick={exportCsv}><Download size={16} /> Exportar CSV</button>
           {admin && (
             <>
@@ -331,6 +375,23 @@ export function Records() {
 
       <Modal open={!!edit} onClose={() => setEdit(null)} title={edit?.id ? 'Editar notificação' : 'Nova notificação'} wide>
         {edit && <RecordForm initial={edit} pdfNums={pdfNums} obsMap={obsMap} onSaved={() => void loadExtras()} onDone={() => setEdit(null)} />}
+      </Modal>
+      <Modal open={fixOpen} onClose={() => !fixBusy && setFixOpen(false)} title="Corrigir duplicados da última importação">
+        {cleanup && (
+          <div className="space-y-3 text-sm">
+            <p>A última importação gravou <b>{fmtNum(cleanup.batch)}</b> itens, mas <b>{fmtNum(cleanup.dup.length + cleanup.fills.length)}</b> deles já estavam cadastrados.</p>
+            <ul className="list-disc space-y-1 pl-5 text-xs text-muted">
+              <li><b className="text-bad">{fmtNum(cleanup.dup.length)}</b> repetidos serão <b>removidos</b> (o cadastro original, com suas edições, é mantido).</li>
+              {cleanup.fills.length > 0 && <li><b>{fmtNum(cleanup.fills.length)}</b> serão mesclados: o item antigo recebe o nº da notificação que a planilha trouxe.</li>}
+              <li><b className="text-good">{fmtNum(cleanup.novos)}</b> são notificações novas e <b>permanecem</b>.</li>
+            </ul>
+            <p className="text-xs text-muted">A comparação usa nº da notificação, data, equipe e não conformidade. Esta ação não pode ser desfeita.</p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button className="btn" disabled={!!fixBusy} onClick={() => setFixOpen(false)}>Cancelar</button>
+              <button className="btn btn-primary" disabled={!!fixBusy} onClick={() => void runCleanup()}>{fixBusy ? <><Loader2 size={15} className="animate-spin" /> {fixBusy}</> : 'Corrigir agora'}</button>
+            </div>
+          </div>
+        )}
       </Modal>
       <Modal open={!!del} onClose={() => setDel(null)} title="Excluir notificação">
         <p className="text-sm">Excluir a notificação <b>{del?.notificacao ?? 's/ nº'}</b> — {del?.equipe}? Esta ação não pode ser desfeita.</p>

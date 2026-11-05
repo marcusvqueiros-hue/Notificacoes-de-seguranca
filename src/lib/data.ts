@@ -28,6 +28,7 @@ interface Row {
   processo: string
   status: string
   eletricistas: string[] | null
+  created_at?: string
 }
 
 const fromRow = (r: Row): Notificacao => ({
@@ -49,6 +50,7 @@ const fromRow = (r: Row): Notificacao => ({
   processo: r.processo,
   status: r.status,
   eletricistas: r.eletricistas ?? [],
+  criadoEm: r.created_at,
 })
 
 // ---------- modo local (somente dev) ----------

@@ -17,6 +17,8 @@ export interface Notificacao {
   processo: string
   status: string
   eletricistas: string[]
+  /** quando o item foi gravado (ISO); usado para identificar importações em lote */
+  criadoEm?: string
 }
 
 export type NotificacaoInput = Omit<Notificacao, 'id'> & { id?: string }
