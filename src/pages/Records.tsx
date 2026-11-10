@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { Copy, Download, ExternalLink, FileSpreadsheet, FileText, Loader2, Paperclip, Pencil, Plus, Search, StickyNote, Trash2 } from 'lucide-react'
+import { Copy, Download, FileSpreadsheet, FileText, Loader2, MessageSquareReply, Pencil, Plus, Search, StickyNote, Trash2 } from 'lucide-react'
 import { useStore } from '../lib/store'
 import { useData } from '../lib/hooks'
 import { uniq } from '../lib/aggregate'
@@ -9,7 +9,8 @@ import { DataTable, type Col } from '../components/DataTable'
 import { Badge } from './Overview'
 import { matchRows, planCleanup } from '../lib/dedupe'
 import { CollaboratorInput } from '../components/CollaboratorInput'
-import { PDF_MAX_BYTES, obsList, obsSave, openPdf, pdfDelete, pdfGet, pdfNumeros, pdfSave, type Obs } from '../lib/extras'
+import { obsList, obsSave, openPdf, pdfDelete, pdfGet, pdfNumeros, pdfSave, type Obs, type PdfKind } from '../lib/extras'
+import { PdfSlot, type PdfChange } from '../components/PdfSlot'
 import type { Notificacao, NotificacaoInput } from '../lib/types'
 
 const today = () => new Date().toISOString().slice(0, 10)
@@ -22,11 +23,9 @@ function Datalist({ id, options }: { id: string; options: string[] }) {
   return <datalist id={id}>{options.map((o) => <option key={o} value={o} />)}</datalist>
 }
 
-const fmtSize = (b: number) => (b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1).replace('.', ',')} MB` : `${Math.max(1, Math.round(b / 1024))} KB`)
-
 function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
   initial: NotificacaoInput
-  pdfNums: Set<number>
+  pdfNums: Record<PdfKind, Set<number>>
   obsMap: Record<string, Obs>
   onSaved: () => void
   onDone: () => void
@@ -41,11 +40,9 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
   const [elet, setElet] = useState<string[]>(initial.eletricistas)
   const obsInit = (initial.notificacao != null ? obsMap[String(initial.notificacao)]?.texto : '') ?? ''
   const [obs, setObs] = useState(obsInit)
-  const [pdfFile, setPdfFile] = useState<File | null>(null)
-  const [removePdf, setRemovePdf] = useState(false)
-  const [pdfErr, setPdfErr] = useState('')
+  const [pdfs, setPdfs] = useState<Record<PdfKind, PdfChange>>({ notificacao: { file: null, remove: false }, resposta: { file: null, remove: false } })
   const num = f.notificacao
-  const hasPdf = num != null && pdfNums.has(num)
+  const has = (k: PdfKind) => num != null && pdfNums[k].has(num)
   const obsMeta = num != null ? obsMap[String(num)] : undefined
   const opt = useMemo(() => ({
     inspetor: uniq(rows, 'inspetor'), equipe: uniq(rows, 'equipe'), base: uniq(rows, 'base'), gerencia: uniq(rows, 'gerencia'),
@@ -53,28 +50,12 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
     colab: uniq(rows, 'colaborador'),
   }), [rows])
 
-  function pickPdf(file?: File) {
-    setPdfErr('')
-    if (!file) return
-    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) return setPdfErr('Selecione um arquivo PDF.')
-    if (file.size > PDF_MAX_BYTES) return setPdfErr(`PDF muito grande (${fmtSize(file.size)}). Máximo de 4 MB.`)
-    setPdfFile(file)
-    setRemovePdf(false)
-  }
-
-  async function openCurrent() {
-    try {
-      const p = await pdfGet(session.token, num!)
-      if (p) openPdf(p)
-      else notify('PDF não encontrado.', 'err')
-    } catch (e) { notify((e as Error).message, 'err') }
-  }
   const set = <K extends keyof NotificacaoInput>(k: K, v: NotificacaoInput[K]) => setF((s) => ({ ...s, [k]: v }))
 
   async function submit(e: FormEvent) {
     e.preventDefault()
-    if ((pdfFile || obs.trim()) && num == null) {
-      notify('Informe o nº da notificação para gravar o PDF e as observações.', 'err')
+    if ((pdfs.notificacao.file || pdfs.resposta.file || obs.trim()) && num == null) {
+      notify('Informe o nº da notificação para gravar os PDFs e as observações.', 'err')
       return
     }
     setBusy(true)
@@ -83,8 +64,11 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
       let extraErr = ''
       if (num != null) {
         try {
-          if (pdfFile) await pdfSave(session.token, num, pdfFile)
-          else if (removePdf && hasPdf) await pdfDelete(session.token, num)
+          for (const k of ['notificacao', 'resposta'] as PdfKind[]) {
+            const p = pdfs[k]
+            if (p.file) await pdfSave(session.token, num, p.file, k)
+            else if (p.remove && has(k)) await pdfDelete(session.token, num, k)
+          }
           if (obs.trim() !== obsInit.trim()) await obsSave(session.token, num, obs, session.username)
         } catch (ex) {
           extraErr = (ex as Error).message
@@ -141,35 +125,10 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
       </div>
 
       <div className="col-span-2 md:col-span-4">
-        <Field label="Notificação em PDF">
-          <div className="rounded-xl border border-dashed border-line bg-surface2 p-3">
-            {(
-              <div className="flex flex-wrap items-center gap-2">
-                {pdfFile ? (
-                  <span className="inline-flex items-center gap-2 rounded-lg bg-good/15 px-3 py-1.5 text-xs font-semibold text-good"><FileText size={14} /> {pdfFile.name} · {fmtSize(pdfFile.size)}</span>
-                ) : hasPdf && !removePdf ? (
-                  <span className="inline-flex items-center gap-2 rounded-lg bg-info/15 px-3 py-1.5 text-xs font-semibold text-info"><FileText size={14} /> PDF já anexado à notificação {num}</span>
-                ) : (
-                  <span className="text-xs text-muted">Nenhum PDF anexado · arquivo .pdf de até 4 MB</span>
-                )}
-                <label className="btn !px-3 !py-1.5 cursor-pointer text-xs">
-                  <Paperclip size={14} /> {hasPdf || pdfFile ? 'Substituir PDF' : 'Anexar PDF'}
-                  <input type="file" accept="application/pdf,.pdf" hidden onChange={(e) => { pickPdf(e.target.files?.[0]); e.target.value = '' }} />
-                </label>
-                {hasPdf && !pdfFile && !removePdf && (
-                  <>
-                    <button type="button" className="btn !px-3 !py-1.5 text-xs" onClick={() => void openCurrent()}><ExternalLink size={14} /> Ver PDF</button>
-                    <button type="button" className="btn btn-danger !px-3 !py-1.5 text-xs" onClick={() => setRemovePdf(true)}><Trash2 size={14} /> Remover</button>
-                  </>
-                )}
-                {pdfFile && <button type="button" className="text-xs text-muted underline" onClick={() => setPdfFile(null)}>desfazer</button>}
-                {removePdf && <button type="button" className="text-xs text-muted underline" onClick={() => setRemovePdf(false)}>manter o PDF</button>}
-              </div>
-            )}
-            {num == null && pdfFile && <p className="mt-2 text-xs text-warn">Preencha o nº da notificação: o PDF é gravado junto com ele.</p>}
-            {pdfErr && <p role="alert" className="mt-2 text-xs text-bad">{pdfErr}</p>}
-          </div>
-        </Field>
+        <div className="grid gap-3 md:grid-cols-2">
+          <PdfSlot label="Notificação em PDF" kind="notificacao" num={num} exists={has('notificacao')} value={pdfs.notificacao} onChange={(v) => setPdfs((p) => ({ ...p, notificacao: v }))} token={session.token} onError={(m) => notify(m, 'err')} />
+          <PdfSlot label="Resposta da notificação em PDF" kind="resposta" num={num} exists={has('resposta')} value={pdfs.resposta} onChange={(v) => setPdfs((p) => ({ ...p, resposta: v }))} token={session.token} onError={(m) => notify(m, 'err')} />
+        </div>
       </div>
 
       <div className="col-span-2 md:col-span-4">
@@ -209,14 +168,18 @@ export function Records() {
   const [del, setDel] = useState<Notificacao | null>(null)
   const [importing, setImporting] = useState(false)
   const file = useRef<HTMLInputElement>(null)
-  const [pdfNums, setPdfNums] = useState<Set<number>>(new Set())
+  const [pdfNums, setPdfNums] = useState<Record<PdfKind, Set<number>>>({ notificacao: new Set(), resposta: new Set() })
   const [obsMap, setObsMap] = useState<Record<string, Obs>>({})
 
   const loadExtras = useCallback(async () => {
     if (!session) return
     try {
-      const [p, o] = await Promise.all([pdfNumeros(session.token), obsList(session.token)])
-      setPdfNums(new Set(p))
+      const [p, r, o] = await Promise.all([
+        pdfNumeros(session.token, 'notificacao'),
+        pdfNumeros(session.token, 'resposta').catch(() => [] as number[]), // exige o SQL 05_resposta_pdf.sql
+        obsList(session.token),
+      ])
+      setPdfNums({ notificacao: new Set(p), resposta: new Set(r) })
       setObsMap(o)
     } catch { /* PDF/observações exigem o SQL 04_anexos_pdf.sql; a lista continua funcionando */ }
   }, [session])
@@ -249,9 +212,9 @@ export function Records() {
     }
   }
 
-  async function openPdfOf(n: number) {
+  async function openPdfOf(n: number, kind: PdfKind) {
     try {
-      const p = await pdfGet(session!.token, n)
+      const p = await pdfGet(session!.token, n, kind)
       if (p) openPdf(p)
       else notify('PDF não encontrado.', 'err')
     } catch (e) { notify((e as Error).message, 'err') }
@@ -277,9 +240,16 @@ export function Records() {
     ...(admin ? [
       {
         key: 'pdf', label: 'PDF', align: 'center' as const,
-        sort: (r: Notificacao) => (r.notificacao != null && pdfNums.has(r.notificacao) ? 1 : 0),
-        render: (r: Notificacao) => r.notificacao != null && pdfNums.has(r.notificacao)
-          ? <button className="rounded-lg p-1.5 text-info hover:bg-info/10" aria-label={`Abrir PDF da notificação ${r.notificacao}`} title="Abrir PDF" onClick={(e) => { e.stopPropagation(); void openPdfOf(r.notificacao!) }}><FileText size={15} /></button>
+        sort: (r: Notificacao) => (r.notificacao != null && pdfNums.notificacao.has(r.notificacao) ? 1 : 0),
+        render: (r: Notificacao) => r.notificacao != null && pdfNums.notificacao.has(r.notificacao)
+          ? <button className="rounded-lg p-1.5 text-info hover:bg-info/10" aria-label={`Abrir PDF da notificação ${r.notificacao}`} title="Abrir PDF da notificação" onClick={(e) => { e.stopPropagation(); void openPdfOf(r.notificacao!, 'notificacao') }}><FileText size={15} /></button>
+          : <span className="text-muted/40">—</span>,
+      },
+      {
+        key: 'resp', label: 'Resposta', align: 'center' as const,
+        sort: (r: Notificacao) => (r.notificacao != null && pdfNums.resposta.has(r.notificacao) ? 1 : 0),
+        render: (r: Notificacao) => r.notificacao != null && pdfNums.resposta.has(r.notificacao)
+          ? <button className="rounded-lg p-1.5 text-good hover:bg-good/10" aria-label={`Abrir PDF da resposta da notificação ${r.notificacao}`} title="Abrir PDF da resposta" onClick={(e) => { e.stopPropagation(); void openPdfOf(r.notificacao!, 'resposta') }}><MessageSquareReply size={15} /></button>
           : <span className="text-muted/40">—</span>,
       },
       {
