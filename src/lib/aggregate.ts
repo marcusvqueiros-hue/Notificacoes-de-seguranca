@@ -33,16 +33,18 @@ export function applyFilters(rows: Notificacao[], f: Filters, except?: FilterKey
   return rows.filter((n) => active.every((k) => filterValue(n, k).some((v) => f[k].includes(v))))
 }
 
-export function groupBy(rows: Notificacao[], keyFn: (n: Notificacao) => string | string[]): Group[] {
+/** Agrupa. Com `ratear`, a multa de um item com várias chaves (ex.: eletricistas da equipe) é dividida entre elas,
+ *  para que a soma dos grupos seja o valor real das multas (e não o valor repetido por pessoa). */
+export function groupBy(rows: Notificacao[], keyFn: (n: Notificacao) => string | string[], ratear = false): Group[] {
   const m = new Map<string, { g: Group; ids: Set<number | null> }>()
   for (const n of rows) {
     const ks = keyFn(n)
-    for (const key of Array.isArray(ks) ? ks : [ks]) {
-      if (!key) continue
+    const list = (Array.isArray(ks) ? ks : [ks]).filter(Boolean)
+    for (const key of list) {
       let e = m.get(key)
       if (!e) m.set(key, (e = { g: { key, itens: 0, valor: 0, notifs: 0, tratados: 0, abertos: 0 }, ids: new Set() }))
       e.g.itens += 1
-      e.g.valor += n.valor
+      e.g.valor += ratear ? n.valor / list.length : n.valor
       if (n.tratado) e.g.tratados += 1
       else e.g.abertos += 1
       e.ids.add(n.notificacao)

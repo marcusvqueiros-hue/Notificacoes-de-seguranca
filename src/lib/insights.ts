@@ -103,12 +103,12 @@ export function buildInsights(rows: Notificacao[]): Insight[] {
   })
 
   // colaboradores
-  const col = sortDesc(groupBy(rows, (n) => n.eletricistas), 'valor')
+  const col = sortDesc(groupBy(rows, (n) => n.eletricistas, true), 'valor')
   if (col.length) {
     out.push({
       tone: 'info',
       title: `${col[0].key} é o colaborador mais citado`,
-      text: `${fmtNum(col[0].itens)} itens, ${fmtBRL(col[0].valor)} em multas. Considere reciclagem/treinamento direcionado.`,
+      text: `${fmtNum(col[0].itens)} itens, ${fmtBRL(col[0].valor)} em multas (rateadas entre a equipe). Considere reciclagem/treinamento direcionado.`,
       filter: { key: 'colaborador', value: col[0].key },
     })
   }

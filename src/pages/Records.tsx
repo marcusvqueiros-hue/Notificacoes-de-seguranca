@@ -9,7 +9,7 @@ import { DataTable, type Col } from '../components/DataTable'
 import { Badge } from './Overview'
 import { matchRows, planCleanup } from '../lib/dedupe'
 import { CollaboratorInput } from '../components/CollaboratorInput'
-import { obsList, obsSave, openPdf, pdfDelete, pdfGet, pdfNumeros, pdfSave, type Obs, type PdfKind } from '../lib/extras'
+import { obsList, obsSave, openAttachment, pdfDelete, pdfGet, pdfNumeros, pdfSave, type Obs, type PdfKind } from '../lib/extras'
 import { PdfSlot, type PdfChange } from '../components/PdfSlot'
 import type { Notificacao, NotificacaoInput } from '../lib/types'
 
@@ -55,7 +55,7 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
   async function submit(e: FormEvent) {
     e.preventDefault()
     if ((pdfs.notificacao.file || pdfs.resposta.file || obs.trim()) && num == null) {
-      notify('Informe o nº da notificação para gravar os PDFs e as observações.', 'err')
+      notify('Informe o nº da notificação para gravar os anexos e as observações.', 'err')
       return
     }
     setBusy(true)
@@ -75,7 +75,7 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
         }
       }
       onSaved()
-      if (extraErr) notify(`Notificação salva, mas o PDF/observação não foi gravado: ${extraErr}`, 'err')
+      if (extraErr) notify(`Notificação salva, mas o anexo/observação não foi gravado: ${extraErr}`, 'err')
       else notify(f.id ? 'Notificação atualizada.' : 'Notificação cadastrada.')
       onDone()
     } catch (ex) {
@@ -126,8 +126,8 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
 
       <div className="col-span-2 md:col-span-4">
         <div className="grid gap-3 md:grid-cols-2">
-          <PdfSlot label="Notificação em PDF" kind="notificacao" num={num} exists={has('notificacao')} value={pdfs.notificacao} onChange={(v) => setPdfs((p) => ({ ...p, notificacao: v }))} token={session.token} onError={(m) => notify(m, 'err')} />
-          <PdfSlot label="Resposta da notificação em PDF" kind="resposta" num={num} exists={has('resposta')} value={pdfs.resposta} onChange={(v) => setPdfs((p) => ({ ...p, resposta: v }))} token={session.token} onError={(m) => notify(m, 'err')} />
+          <PdfSlot label="Notificação (PDF ou imagem)" kind="notificacao" num={num} exists={has('notificacao')} value={pdfs.notificacao} onChange={(v) => setPdfs((p) => ({ ...p, notificacao: v }))} token={session.token} onError={(m) => notify(m, 'err')} />
+          <PdfSlot label="Resposta da notificação (PDF ou imagem)" kind="resposta" num={num} exists={has('resposta')} value={pdfs.resposta} onChange={(v) => setPdfs((p) => ({ ...p, resposta: v }))} token={session.token} onError={(m) => notify(m, 'err')} />
         </div>
       </div>
 
@@ -215,8 +215,8 @@ export function Records() {
   async function openPdfOf(n: number, kind: PdfKind) {
     try {
       const p = await pdfGet(session!.token, n, kind)
-      if (p) openPdf(p)
-      else notify('PDF não encontrado.', 'err')
+      if (p) openAttachment(p)
+      else notify('Arquivo não encontrado.', 'err')
     } catch (e) { notify((e as Error).message, 'err') }
   }
 
@@ -239,17 +239,17 @@ export function Records() {
     { key: 't', label: 'Tratado', align: 'center', render: (r) => <Badge ok={r.tratado} />, sort: (r) => (r.tratado ? 1 : 0) },
     ...(admin ? [
       {
-        key: 'pdf', label: 'PDF', align: 'center' as const,
+        key: 'pdf', label: 'Anexo', align: 'center' as const,
         sort: (r: Notificacao) => (r.notificacao != null && pdfNums.notificacao.has(r.notificacao) ? 1 : 0),
         render: (r: Notificacao) => r.notificacao != null && pdfNums.notificacao.has(r.notificacao)
-          ? <button className="rounded-lg p-1.5 text-info hover:bg-info/10" aria-label={`Abrir PDF da notificação ${r.notificacao}`} title="Abrir PDF da notificação" onClick={(e) => { e.stopPropagation(); void openPdfOf(r.notificacao!, 'notificacao') }}><FileText size={15} /></button>
+          ? <button className="rounded-lg p-1.5 text-info hover:bg-info/10" aria-label={`Abrir anexo da notificação ${r.notificacao}`} title="Abrir anexo da notificação (PDF ou imagem)" onClick={(e) => { e.stopPropagation(); void openPdfOf(r.notificacao!, 'notificacao') }}><FileText size={15} /></button>
           : <span className="text-muted/40">—</span>,
       },
       {
         key: 'resp', label: 'Resposta', align: 'center' as const,
         sort: (r: Notificacao) => (r.notificacao != null && pdfNums.resposta.has(r.notificacao) ? 1 : 0),
         render: (r: Notificacao) => r.notificacao != null && pdfNums.resposta.has(r.notificacao)
-          ? <button className="rounded-lg p-1.5 text-good hover:bg-good/10" aria-label={`Abrir PDF da resposta da notificação ${r.notificacao}`} title="Abrir PDF da resposta" onClick={(e) => { e.stopPropagation(); void openPdfOf(r.notificacao!, 'resposta') }}><MessageSquareReply size={15} /></button>
+          ? <button className="rounded-lg p-1.5 text-good hover:bg-good/10" aria-label={`Abrir anexo da resposta da notificação ${r.notificacao}`} title="Abrir anexo da resposta (PDF ou imagem)" onClick={(e) => { e.stopPropagation(); void openPdfOf(r.notificacao!, 'resposta') }}><MessageSquareReply size={15} /></button>
           : <span className="text-muted/40">—</span>,
       },
       {

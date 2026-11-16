@@ -17,8 +17,9 @@ export function People() {
   const setFilter = useStore((s) => s.setFilter)
   const p = usePal()
 
-  // cada item é atribuído a todos os eletricistas da equipe (como na planilha original)
-  const peopleAll = useMemo(() => sortDesc(groupBy(except('colaborador'), (n) => n.eletricistas), 'valor'), [except])
+  // cada item conta para todos os eletricistas da equipe, mas a multa é RATEADA entre eles:
+  // assim a soma por colaborador bate com o valor real da Visão Geral (sem repetir a mesma multa em cada pessoa)
+  const peopleAll = useMemo(() => sortDesc(groupBy(except('colaborador'), (n) => n.eletricistas, true), 'valor'), [except])
   const sel = filters.colaborador
   const people = useMemo(() => (sel.length ? peopleAll.filter((g) => sel.includes(g.key)) : peopleAll), [peopleAll, sel])
   const pairs = useMemo<Pair[]>(() => {
@@ -29,45 +30,56 @@ export function People() {
         const id = `${c}|${n.naoConformidade}`
         const e = m.get(id) ?? { id, colaborador: c, nc: n.naoConformidade, itens: 0, valor: 0 }
         e.itens += n.qnt
-        e.valor += n.valor
+        e.valor += n.valor / n.eletricistas.length
         m.set(id, e)
       }
     return [...m.values()].sort((a, b) => b.valor - a.valor)
   }, [filtered, sel])
+  // série mensal real: cada item conta uma vez e a multa não se repete por colaborador
+  // (com colaborador selecionado, mostra só a parte rateada dele)
   const monthly = useMemo(() => {
     const itens = Array(12).fill(0)
     const valor = Array(12).fill(0)
-    for (const n of filtered)
-      for (const c of n.eletricistas) if (!sel.length || sel.includes(c)) { itens[mesIdx(n.data)] += 1; valor[mesIdx(n.data)] += n.valor }
+    for (const n of filtered) {
+      const i = mesIdx(n.data)
+      itens[i] += 1
+      const share = sel.length && n.eletricistas.length ? n.eletricistas.filter((c) => sel.includes(c)).length / n.eletricistas.length : 1
+      valor[i] += n.valor * share
+    }
     const last = Math.max(0, itens.reduce((a, v, i) => (v ? i : a), 0))
     return { labels: MESES.slice(0, last + 1), itens: itens.slice(0, last + 1), valor: valor.slice(0, last + 1) }
   }, [filtered, sel])
 
-  const totalItens = people.reduce((a, g) => a + g.itens, 0)
-  const totalValor = people.reduce((a, g) => a + g.valor, 0)
+  // itens distintos (igual à Visão Geral) e valor real das multas
+  const totalItens = filtered.length
+  const valorAtribuido = people.reduce((a, g) => a + g.valor, 0)
+  const semColab = sel.length ? [] : filtered.filter((n) => !n.eletricistas.length)
+  const totalValor = sel.length ? valorAtribuido : filtered.reduce((a, n) => a + n.valor, 0)
+  const valorSemColab = semColab.reduce((a, n) => a + n.valor, 0)
+  const totalPares = pairs.reduce((a, r) => a + r.valor, 0)
   const ncOptions = useMemo(() => uniq(rows, 'naoConformidade'), [rows])
 
   const pcols: Col<Group>[] = [
     { key: 'c', label: 'Colaborador', render: (g) => g.key, sort: (g) => g.key, total: `${people.length} colaboradores` },
     { key: 'n', label: 'Notificações', align: 'center', render: (g) => g.notifs, sort: (g) => g.notifs },
-    { key: 'i', label: 'Itens', align: 'center', render: (g) => g.itens, sort: (g) => g.itens, total: fmtNum(totalItens) },
-    { key: 'v', label: 'Valor', align: 'right', render: (g) => fmtBRL(g.valor), sort: (g) => g.valor, total: fmtBRL(totalValor) },
+    { key: 'i', label: 'Itens', align: 'center', render: (g) => g.itens, sort: (g) => g.itens },
+    { key: 'v', label: 'Valor rateado', align: 'right', render: (g) => fmtBRL(g.valor), sort: (g) => g.valor, total: fmtBRL(valorAtribuido) },
   ]
   const xcols: Col<Pair>[] = [
     { key: 'c', label: 'Colaborador', render: (r) => r.colaborador, sort: (r) => r.colaborador },
     { key: 'nc', label: 'Não conformidade', render: (r) => <span title={r.nc}>{short(r.nc, 70)}</span>, sort: (r) => r.nc },
-    { key: 'i', label: 'Qnt de itens', align: 'center', render: (r) => r.itens, sort: (r) => r.itens, total: fmtNum(totalItens) },
-    { key: 'v', label: 'Valor de multas', align: 'right', render: (r) => fmtBRL(r.valor), sort: (r) => r.valor, total: fmtBRL(totalValor) },
+    { key: 'i', label: 'Qnt de itens', align: 'center', render: (r) => r.itens, sort: (r) => r.itens },
+    { key: 'v', label: 'Valor rateado', align: 'right', render: (r) => fmtBRL(r.valor), sort: (r) => r.valor, total: fmtBRL(totalPares) },
   ]
 
   return (
     <div className="mx-auto max-w-[1700px] space-y-4">
       <div className="flex flex-wrap items-end gap-3">
         <div className="grid flex-1 grid-cols-2 gap-3 xl:grid-cols-4">
-          <KpiCard label="Itens notificados" value={totalItens} format={fmtNum} icon={<FileWarning size={17} />} color={p.brand} spark={monthly.itens} hint="por colaborador" />
-          <KpiCard delay={0.05} label="Valor de multas" value={totalValor} format={fmtBRL} icon={<BadgeDollarSign size={17} />} color={p.warn} spark={monthly.valor} hint="soma por colaborador" />
-          <KpiCard delay={0.1} label="Colaboradores" value={people.length} format={fmtNum} icon={<UserRound size={17} />} color="#8b5cf6" hint="citados" />
-          <KpiCard delay={0.15} label="Média / colaborador" value={people.length ? totalValor / people.length : 0} format={fmtBRL} icon={<Calculator size={17} />} color={p.accent} />
+          <KpiCard label="Itens notificados" value={totalItens} format={fmtNum} icon={<FileWarning size={17} />} color={p.brand} spark={monthly.itens} hint="itens distintos" />
+          <KpiCard delay={0.05} label="Valor de multas" value={totalValor} format={fmtBRL} icon={<BadgeDollarSign size={17} />} color={p.warn} spark={monthly.valor} hint={sel.length ? 'rateado entre a equipe' : 'valor real das multas'} />
+          <KpiCard delay={0.1} label="Colaboradores" value={people.length} format={fmtNum} icon={<UserRound size={17} />} color="#8b5cf6" hint={semColab.length ? `citados · ${semColab.length} itens sem colaborador (${fmtBRL(valorSemColab)})` : 'citados'} />
+          <KpiCard delay={0.15} label="Média / colaborador" value={people.length ? valorAtribuido / people.length : 0} format={fmtBRL} icon={<Calculator size={17} />} color={p.accent} hint="multa rateada" />
         </div>
         <label className="w-full text-xs font-semibold text-muted xl:w-96">
           Não conformidade
@@ -79,13 +91,13 @@ export function People() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <Panel title="Itens notificados por mês" subtitle="Somados por colaborador" delay={0.05}>
+        <Panel title="Itens notificados por mês" subtitle="Itens distintos" delay={0.05}>
           <Chart height={230} option={areaOption(p, monthly.labels, monthly.itens, filters.mes, fmtNum, p.brand, 'Itens')} onPick={(n) => toggle('mes', n)} />
         </Panel>
-        <Panel title="Valor de multa por mês" delay={0.1}>
+        <Panel title="Valor de multa por mês" subtitle="Valor real acumulado no mês" delay={0.1}>
           <Chart height={230} option={areaOption(p, monthly.labels, monthly.valor, filters.mes, (v) => fmtBRL(v), p.accent, 'Multa')} onPick={(n) => toggle('mes', n)} />
         </Panel>
-        <Panel title="Colaboradores com maior valor" subtitle="Top 12 · clique para filtrar" delay={0.05}>
+        <Panel title="Colaboradores com maior valor" subtitle="Multa rateada entre a equipe · Top 12 · clique para filtrar" delay={0.05}>
           <Chart height={380} option={hbarOption(p, peopleAll, 'valor', filters.colaborador, 12, p.brand, 30)} onPick={(n) => toggle('colaborador', n)} />
         </Panel>
         <Panel title="Colaboradores mais reincidentes" subtitle="Por quantidade de itens" delay={0.1}>

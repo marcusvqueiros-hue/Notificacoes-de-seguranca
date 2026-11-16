@@ -1,6 +1,6 @@
 import { supabase } from './data'
 
-/** PDF (notificação e resposta) e observação de cada notificação, por Nº. Somente administradores. */
+/** Anexo (PDF ou imagem JPG/PNG) da notificação e da resposta, e observação de cada notificação, por Nº. Somente administradores. */
 export const PDF_MAX_BYTES = 4 * 1024 * 1024
 
 /** 'notificacao' = PDF da notificação recebida; 'resposta' = PDF da resposta enviada. */
@@ -66,10 +66,39 @@ export async function pdfDelete(token: string, numero: number, kind: PdfKind = '
   localStorage.setItem(lsPdf(kind), JSON.stringify(all))
 }
 
-/** Abre o PDF em nova aba (ou baixa, se o navegador bloquear). */
-export function openPdf(p: { nome: string; base64: string }) {
+/** Tipo do anexo pelos primeiros bytes (PDF, JPEG ou PNG); o banco valida o mesmo no 06_anexos_imagem.sql. */
+function sniffMime(b: Uint8Array): string {
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg'
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'image/png'
+  return 'application/pdf'
+}
+
+export const isPdfFile = (f: File) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name)
+export const isImageFile = (f: File) => /^image\/(jpeg|png)$/.test(f.type) || /\.(jpe?g|png)$/i.test(f.name)
+
+/** Fotos grandes (celular/scanner) são reduzidas e salvas como JPEG para caber no limite do anexo. PDFs e imagens pequenas passam direto. */
+export async function prepareAttachment(f: File): Promise<File> {
+  if (!isImageFile(f) || f.size <= 1.5 * 1024 * 1024) return f
+  const bmp = await createImageBitmap(f).catch(() => null)
+  if (!bmp) throw new Error('Não foi possível ler a imagem.')
+  const scale = Math.min(1, 2200 / Math.max(bmp.width, bmp.height))
+  const c = document.createElement('canvas')
+  c.width = Math.round(bmp.width * scale)
+  c.height = Math.round(bmp.height * scale)
+  const ctx = c.getContext('2d')!
+  ctx.fillStyle = '#fff' // PNG com transparência vira fundo branco no JPEG
+  ctx.fillRect(0, 0, c.width, c.height)
+  ctx.drawImage(bmp, 0, 0, c.width, c.height)
+  bmp.close()
+  const blob = await new Promise<Blob | null>((res) => c.toBlob(res, 'image/jpeg', 0.85))
+  if (!blob) throw new Error('Não foi possível reduzir a imagem.')
+  return new File([blob], f.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' })
+}
+
+/** Abre o anexo (PDF ou imagem) em nova aba (ou baixa, se o navegador bloquear). */
+export function openAttachment(p: { nome: string; base64: string }) {
   const bytes = Uint8Array.from(atob(p.base64), (c) => c.charCodeAt(0))
-  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }))
+  const url = URL.createObjectURL(new Blob([bytes], { type: sniffMime(bytes) }))
   if (!window.open(url, '_blank')) {
     const a = document.createElement('a')
     a.href = url
