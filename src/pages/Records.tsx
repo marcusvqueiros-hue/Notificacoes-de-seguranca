@@ -9,8 +9,8 @@ import { DataTable, type Col } from '../components/DataTable'
 import { Badge } from './Overview'
 import { matchRows, planCleanup } from '../lib/dedupe'
 import { CollaboratorInput } from '../components/CollaboratorInput'
-import { obsList, obsSave, openAttachment, pdfDelete, pdfGet, pdfNumeros, pdfSave, type Obs, type PdfKind } from '../lib/extras'
-import { PdfSlot, type PdfChange } from '../components/PdfSlot'
+import { anexoContagem, anexoDelete, anexoGet, anexoList, anexoSave, obsList, obsSave, openAttachment, type Anexo, type Obs, type PdfKind } from '../lib/extras'
+import { NO_CHANGE, PdfSlot, type PdfChange } from '../components/PdfSlot'
 import type { Notificacao, NotificacaoInput } from '../lib/types'
 
 const today = () => new Date().toISOString().slice(0, 10)
@@ -25,7 +25,7 @@ function Datalist({ id, options }: { id: string; options: string[] }) {
 
 function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
   initial: NotificacaoInput
-  pdfNums: Record<PdfKind, Set<number>>
+  pdfNums: Record<PdfKind, Record<number, number>>
   obsMap: Record<string, Obs>
   onSaved: () => void
   onDone: () => void
@@ -40,9 +40,9 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
   const [elet, setElet] = useState<string[]>(initial.eletricistas)
   const obsInit = (initial.notificacao != null ? obsMap[String(initial.notificacao)]?.texto : '') ?? ''
   const [obs, setObs] = useState(obsInit)
-  const [pdfs, setPdfs] = useState<Record<PdfKind, PdfChange>>({ notificacao: { file: null, remove: false }, resposta: { file: null, remove: false } })
+  const [pdfs, setPdfs] = useState<Record<PdfKind, PdfChange>>({ notificacao: NO_CHANGE, resposta: NO_CHANGE })
   const num = f.notificacao
-  const has = (k: PdfKind) => num != null && pdfNums[k].has(num)
+  const cnt = (k: PdfKind) => (num != null ? pdfNums[k][num] ?? 0 : 0)
   const obsMeta = num != null ? obsMap[String(num)] : undefined
   const opt = useMemo(() => ({
     inspetor: uniq(rows, 'inspetor'), equipe: uniq(rows, 'equipe'), base: uniq(rows, 'base'), gerencia: uniq(rows, 'gerencia'),
@@ -54,7 +54,7 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
 
   async function submit(e: FormEvent) {
     e.preventDefault()
-    if ((pdfs.notificacao.file || pdfs.resposta.file || obs.trim()) && num == null) {
+    if ((pdfs.notificacao.add.length || pdfs.resposta.add.length || obs.trim()) && num == null) {
       notify('Informe o nº da notificação para gravar os anexos e as observações.', 'err')
       return
     }
@@ -66,8 +66,8 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
         try {
           for (const k of ['notificacao', 'resposta'] as PdfKind[]) {
             const p = pdfs[k]
-            if (p.file) await pdfSave(session.token, num, p.file, k)
-            else if (p.remove && has(k)) await pdfDelete(session.token, num, k)
+            for (const id of p.removeIds) await anexoDelete(session.token, id)
+            for (const file of p.add) await anexoSave(session.token, num, file, k)
           }
           if (obs.trim() !== obsInit.trim()) await obsSave(session.token, num, obs, session.username)
         } catch (ex) {
@@ -126,8 +126,8 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
 
       <div className="col-span-2 md:col-span-4">
         <div className="grid gap-3 md:grid-cols-2">
-          <PdfSlot label="Notificação (PDF ou imagem)" kind="notificacao" num={num} exists={has('notificacao')} value={pdfs.notificacao} onChange={(v) => setPdfs((p) => ({ ...p, notificacao: v }))} token={session.token} onError={(m) => notify(m, 'err')} />
-          <PdfSlot label="Resposta da notificação (PDF ou imagem)" kind="resposta" num={num} exists={has('resposta')} value={pdfs.resposta} onChange={(v) => setPdfs((p) => ({ ...p, resposta: v }))} token={session.token} onError={(m) => notify(m, 'err')} />
+          <PdfSlot label="Notificação (PDF ou imagem)" kind="notificacao" num={num} count={cnt('notificacao')} value={pdfs.notificacao} onChange={(v) => setPdfs((p) => ({ ...p, notificacao: v }))} token={session.token} onError={(m) => notify(m, 'err')} />
+          <PdfSlot label="Resposta da notificação (PDF ou imagem)" kind="resposta" num={num} count={cnt('resposta')} value={pdfs.resposta} onChange={(v) => setPdfs((p) => ({ ...p, resposta: v }))} token={session.token} onError={(m) => notify(m, 'err')} />
         </div>
       </div>
 
@@ -168,20 +168,20 @@ export function Records() {
   const [del, setDel] = useState<Notificacao | null>(null)
   const [importing, setImporting] = useState(false)
   const file = useRef<HTMLInputElement>(null)
-  const [pdfNums, setPdfNums] = useState<Record<PdfKind, Set<number>>>({ notificacao: new Set(), resposta: new Set() })
+  const [pdfNums, setPdfNums] = useState<Record<PdfKind, Record<number, number>>>({ notificacao: {}, resposta: {} })
   const [obsMap, setObsMap] = useState<Record<string, Obs>>({})
 
   const loadExtras = useCallback(async () => {
     if (!session) return
     try {
       const [p, r, o] = await Promise.all([
-        pdfNumeros(session.token, 'notificacao'),
-        pdfNumeros(session.token, 'resposta').catch(() => [] as number[]), // exige o SQL 05_resposta_pdf.sql
+        anexoContagem(session.token, 'notificacao'),
+        anexoContagem(session.token, 'resposta'), // exige o SQL 07_anexos_multiplos.sql
         obsList(session.token),
       ])
-      setPdfNums({ notificacao: new Set(p), resposta: new Set(r) })
+      setPdfNums({ notificacao: p, resposta: r })
       setObsMap(o)
-    } catch { /* PDF/observações exigem o SQL 04_anexos_pdf.sql; a lista continua funcionando */ }
+    } catch { /* anexos/observações exigem os SQLs 04 a 07; a lista continua funcionando */ }
   }, [session])
   useEffect(() => { if (admin) void loadExtras() }, [admin, loadExtras])
 
@@ -212,10 +212,20 @@ export function Records() {
     }
   }
 
-  async function openPdfOf(n: number, kind: PdfKind) {
+  const [picker, setPicker] = useState<{ n: number; kind: PdfKind; list: Anexo[] } | null>(null)
+  async function openAnexo(id: number) {
     try {
-      const p = await pdfGet(session!.token, n, kind)
+      const p = await anexoGet(session!.token, id)
       if (p) openAttachment(p)
+      else notify('Arquivo não encontrado.', 'err')
+    } catch (e) { notify((e as Error).message, 'err') }
+  }
+  /** Um arquivo abre direto; vários abrem uma lista para escolher. */
+  async function openAnexosOf(n: number, kind: PdfKind) {
+    try {
+      const list = await anexoList(session!.token, n, kind)
+      if (list.length === 1) await openAnexo(list[0].id)
+      else if (list.length > 1) setPicker({ n, kind, list })
       else notify('Arquivo não encontrado.', 'err')
     } catch (e) { notify((e as Error).message, 'err') }
   }
@@ -238,20 +248,26 @@ export function Records() {
     { key: 'v', label: 'Multa', align: 'right', render: (r) => fmtBRL(r.valor), sort: (r) => r.valor, total: fmtBRL(list.reduce((a, r) => a + r.valor, 0)) },
     { key: 't', label: 'Tratado', align: 'center', render: (r) => <Badge ok={r.tratado} />, sort: (r) => (r.tratado ? 1 : 0) },
     ...(admin ? [
-      {
-        key: 'pdf', label: 'Anexo', align: 'center' as const,
-        sort: (r: Notificacao) => (r.notificacao != null && pdfNums.notificacao.has(r.notificacao) ? 1 : 0),
-        render: (r: Notificacao) => r.notificacao != null && pdfNums.notificacao.has(r.notificacao)
-          ? <button className="rounded-lg p-1.5 text-info hover:bg-info/10" aria-label={`Abrir anexo da notificação ${r.notificacao}`} title="Abrir anexo da notificação (PDF ou imagem)" onClick={(e) => { e.stopPropagation(); void openPdfOf(r.notificacao!, 'notificacao') }}><FileText size={15} /></button>
-          : <span className="text-muted/40">—</span>,
-      },
-      {
-        key: 'resp', label: 'Resposta', align: 'center' as const,
-        sort: (r: Notificacao) => (r.notificacao != null && pdfNums.resposta.has(r.notificacao) ? 1 : 0),
-        render: (r: Notificacao) => r.notificacao != null && pdfNums.resposta.has(r.notificacao)
-          ? <button className="rounded-lg p-1.5 text-good hover:bg-good/10" aria-label={`Abrir anexo da resposta da notificação ${r.notificacao}`} title="Abrir anexo da resposta (PDF ou imagem)" onClick={(e) => { e.stopPropagation(); void openPdfOf(r.notificacao!, 'resposta') }}><MessageSquareReply size={15} /></button>
-          : <span className="text-muted/40">—</span>,
-      },
+      ...(['notificacao', 'resposta'] as PdfKind[]).map((kind) => ({
+        key: kind === 'resposta' ? 'resp' : 'pdf', label: kind === 'resposta' ? 'Resposta' : 'Anexo', align: 'center' as const,
+        sort: (r: Notificacao) => (r.notificacao != null ? pdfNums[kind][r.notificacao] ?? 0 : 0),
+        render: (r: Notificacao) => {
+          const c = r.notificacao != null ? pdfNums[kind][r.notificacao] ?? 0 : 0
+          if (!c) return <span className="text-muted/40">—</span>
+          const nome = kind === 'resposta' ? 'resposta' : 'notificação'
+          return (
+            <button
+              className={`inline-flex items-center gap-1 rounded-lg p-1.5 ${kind === 'resposta' ? 'text-good hover:bg-good/10' : 'text-info hover:bg-info/10'}`}
+              aria-label={`Abrir ${c > 1 ? `os ${c} arquivos` : 'o arquivo'} da ${nome} ${r.notificacao}`}
+              title={c > 1 ? `${c} arquivos da ${nome}` : `Abrir arquivo da ${nome} (PDF ou imagem)`}
+              onClick={(e) => { e.stopPropagation(); void openAnexosOf(r.notificacao!, kind) }}
+            >
+              {kind === 'resposta' ? <MessageSquareReply size={15} /> : <FileText size={15} />}
+              {c > 1 && <span className="text-[11px] font-bold">{c}</span>}
+            </button>
+          )
+        },
+      })),
       {
         key: 'obs', label: 'Observação',
         render: (r: Notificacao) => {
@@ -345,6 +361,19 @@ export function Records() {
 
       <Modal open={!!edit} onClose={() => setEdit(null)} title={edit?.id ? 'Editar notificação' : 'Nova notificação'} wide>
         {edit && <RecordForm initial={edit} pdfNums={pdfNums} obsMap={obsMap} onSaved={() => void loadExtras()} onDone={() => setEdit(null)} />}
+      </Modal>
+      <Modal open={!!picker} onClose={() => setPicker(null)} title={picker ? `Arquivos da ${picker.kind === 'resposta' ? 'resposta' : 'notificação'} ${picker.n}` : ''}>
+        {picker && (
+          <ul className="space-y-2 text-sm">
+            {picker.list.map((a) => (
+              <li key={a.id} className="flex items-center gap-2 rounded-lg bg-surface2 px-3 py-2">
+                <FileText size={15} className="shrink-0 text-muted" />
+                <span className="min-w-0 flex-1 truncate" title={a.nome}>{a.nome}</span>
+                <button className="btn !px-3 !py-1 text-xs" onClick={() => void openAnexo(a.id)}>Abrir</button>
+              </li>
+            ))}
+          </ul>
+        )}
       </Modal>
       <Modal open={fixOpen} onClose={() => !fixBusy && setFixOpen(false)} title="Corrigir duplicados da última importação">
         {cleanup && (

@@ -3,18 +3,19 @@ import { supabase } from './data'
 /** Anexo (PDF ou imagem JPG/PNG) da notificação e da resposta, e observação de cada notificação, por Nº. Somente administradores. */
 export const PDF_MAX_BYTES = 4 * 1024 * 1024
 
-/** 'notificacao' = PDF da notificação recebida; 'resposta' = PDF da resposta enviada. */
+/** 'notificacao' = arquivos da notificação recebida; 'resposta' = arquivos da resposta enviada. */
 export type PdfKind = 'notificacao' | 'resposta'
-const RPC: Record<PdfKind, { numeros: string; save: string; get: string; del: string }> = {
-  notificacao: { numeros: 'pdf_numeros', save: 'pdf_save', get: 'pdf_get', del: 'pdf_delete' },
-  resposta: { numeros: 'resp_numeros', save: 'resp_save', get: 'resp_get', del: 'resp_delete' },
-}
+/** Máximo de arquivos por notificação e por tipo (o banco também valida). */
+export const ANEXOS_MAX = 10
 
+export interface Anexo { id: number; nome: string; tamanho: number }
 export interface Obs { texto: string; por?: string; em?: string }
 
-const lsPdf = (k: PdfKind) => `cgb-local-pdfs${k === 'resposta' ? '-resp' : ''}`
+interface LocalAnexo extends Anexo { numero: number; tipo: PdfKind; base64: string }
+const LS_ANEXOS = 'cgb-local-anexos'
 const LS_OBS = 'cgb-local-obs'
-const localPdfs = (k: PdfKind): Record<string, { nome: string; base64: string }> => JSON.parse(localStorage.getItem(lsPdf(k)) || '{}')
+const localAnexos = (): LocalAnexo[] => JSON.parse(localStorage.getItem(LS_ANEXOS) || '[]')
+const saveLocalAnexos = (l: LocalAnexo[]) => localStorage.setItem(LS_ANEXOS, JSON.stringify(l))
 const localObs = (): Record<string, Obs> => JSON.parse(localStorage.getItem(LS_OBS) || '{}')
 
 export const fileToBase64 = (f: File) =>
@@ -25,45 +26,56 @@ export const fileToBase64 = (f: File) =>
     r.readAsDataURL(f)
   })
 
-export async function pdfNumeros(token: string, kind: PdfKind = 'notificacao'): Promise<number[]> {
+/** Quantos arquivos cada notificação tem, por Nº: { 94596: 2 }. */
+export async function anexoContagem(token: string, kind: PdfKind): Promise<Record<number, number>> {
   if (supabase) {
-    const { data, error } = await supabase.rpc(RPC[kind].numeros, { p_token: token })
+    const { data, error } = await supabase.rpc('anexo_contagem', { p_token: token, p_tipo: kind })
     if (error) throw new Error(error.message)
-    return (data as number[]).map(Number)
+    return Object.fromEntries(Object.entries(data as Record<string, number>).map(([k, v]) => [Number(k), Number(v)]))
   }
-  return Object.keys(localPdfs(kind)).map(Number)
+  const out: Record<number, number> = {}
+  for (const a of localAnexos()) if (a.tipo === kind) out[a.numero] = (out[a.numero] ?? 0) + 1
+  return out
 }
 
-export async function pdfSave(token: string, numero: number, file: File, kind: PdfKind = 'notificacao') {
+export async function anexoList(token: string, numero: number, kind: PdfKind): Promise<Anexo[]> {
+  if (supabase) {
+    const { data, error } = await supabase.rpc('anexo_list', { p_token: token, p_numero: numero, p_tipo: kind })
+    if (error) throw new Error(error.message)
+    return data as Anexo[]
+  }
+  return localAnexos().filter((a) => a.numero === numero && a.tipo === kind).map(({ id, nome, tamanho }) => ({ id, nome, tamanho }))
+}
+
+export async function anexoSave(token: string, numero: number, file: File, kind: PdfKind) {
   const base64 = await fileToBase64(file)
   if (supabase) {
-    const { error } = await supabase.rpc(RPC[kind].save, { p_token: token, p_numero: numero, p_nome: file.name, p_base64: base64 })
+    const { error } = await supabase.rpc('anexo_save', { p_token: token, p_numero: numero, p_tipo: kind, p_nome: file.name, p_base64: base64 })
     if (error) throw new Error(error.message)
     return
   }
-  const all = localPdfs(kind)
-  all[numero] = { nome: file.name, base64 }
-  localStorage.setItem(lsPdf(kind), JSON.stringify(all))
+  const all = localAnexos()
+  all.push({ id: Date.now() + Math.floor(Math.random() * 1000), numero, tipo: kind, nome: file.name, tamanho: file.size, base64 })
+  saveLocalAnexos(all)
 }
 
-export async function pdfGet(token: string, numero: number, kind: PdfKind = 'notificacao'): Promise<{ nome: string; base64: string } | null> {
+export async function anexoGet(token: string, id: number): Promise<{ nome: string; base64: string } | null> {
   if (supabase) {
-    const { data, error } = await supabase.rpc(RPC[kind].get, { p_token: token, p_numero: numero })
+    const { data, error } = await supabase.rpc('anexo_get', { p_token: token, p_id: id })
     if (error) throw new Error(error.message)
     return (data as { nome: string; base64: string } | null) ?? null
   }
-  return localPdfs(kind)[numero] ?? null
+  const a = localAnexos().find((x) => x.id === id)
+  return a ? { nome: a.nome, base64: a.base64 } : null
 }
 
-export async function pdfDelete(token: string, numero: number, kind: PdfKind = 'notificacao') {
+export async function anexoDelete(token: string, id: number) {
   if (supabase) {
-    const { error } = await supabase.rpc(RPC[kind].del, { p_token: token, p_numero: numero })
+    const { error } = await supabase.rpc('anexo_delete', { p_token: token, p_id: id })
     if (error) throw new Error(error.message)
     return
   }
-  const all = localPdfs(kind)
-  delete all[numero]
-  localStorage.setItem(lsPdf(kind), JSON.stringify(all))
+  saveLocalAnexos(localAnexos().filter((a) => a.id !== id))
 }
 
 /** Tipo do anexo pelos primeiros bytes (PDF, JPEG ou PNG); o banco valida o mesmo no 06_anexos_imagem.sql. */
