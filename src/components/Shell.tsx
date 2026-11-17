@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import {
-  LayoutDashboard, Users, UserRound, Lightbulb, ListChecks, Sun, Moon, Maximize, Minimize, PanelLeftClose, PanelLeftOpen,
+  LayoutDashboard, Users, UserRound, Grid3x3, Lightbulb, ListChecks, Sun, Moon, Maximize, Minimize, PanelLeftClose, PanelLeftOpen,
   LogOut, KeyRound, UserCog, FilterX, Search, ChevronDown, X, RefreshCw,
 } from 'lucide-react'
 import { useStore, type Page } from '../lib/store'
@@ -15,6 +15,7 @@ const NAV: { id: Page; label: string; icon: ReactNode; admin?: boolean }[] = [
   { id: 'overview', label: 'Visão geral', icon: <LayoutDashboard size={18} /> },
   { id: 'teams', label: 'Por equipe', icon: <Users size={18} /> },
   { id: 'people', label: 'Por colaborador', icon: <UserRound size={18} /> },
+  { id: 'heatmap', label: 'Mapa de calor', icon: <Grid3x3 size={18} /> },
   { id: 'insights', label: 'Insights', icon: <Lightbulb size={18} /> },
   { id: 'records', label: 'Notificações', icon: <ListChecks size={18} />, admin: true },
   { id: 'users', label: 'Usuários', icon: <UserCog size={18} />, admin: true },

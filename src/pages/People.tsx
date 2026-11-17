@@ -8,7 +8,6 @@ import { MESES, fmtBRL, fmtNum, mesIdx, short } from '../lib/format'
 import { Chart } from '../components/Chart'
 import { KpiCard, Panel } from '../components/ui'
 import { DataTable, type Col } from '../components/DataTable'
-import { PeopleHeatmap } from '../components/PeopleHeatmap'
 
 interface Pair { id: string; colaborador: string; nc: string; itens: number; valor: number }
 
@@ -105,8 +104,6 @@ export function People() {
           <Chart height={380} option={hbarOption(p, sortDesc(peopleAll, 'itens'), 'itens', filters.colaborador, 12, '#8b5cf6', 30)} onPick={(n) => toggle('colaborador', n)} />
         </Panel>
       </div>
-
-      <PeopleHeatmap />
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
         <Panel title="Colaborador" className="xl:col-span-2">

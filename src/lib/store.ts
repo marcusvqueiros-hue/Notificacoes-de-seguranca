@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { EMPTY_FILTERS, type FilterKey, type Filters, type Notificacao, type NotificacaoInput, type Session } from './types'
 import * as api from './data'
 
-export type Page = 'overview' | 'teams' | 'people' | 'insights' | 'records' | 'users'
+export type Page = 'overview' | 'teams' | 'people' | 'heatmap' | 'insights' | 'records' | 'users'
 export type Theme = 'light' | 'dark'
 
 const SESSION_KEY = 'cgb-session'

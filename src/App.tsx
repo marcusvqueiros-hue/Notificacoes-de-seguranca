@@ -8,6 +8,7 @@ import { Overview } from './pages/Overview'
 
 const Teams = lazy(() => import('./pages/Teams').then((m) => ({ default: m.Teams })))
 const People = lazy(() => import('./pages/People').then((m) => ({ default: m.People })))
+const Heatmap = lazy(() => import('./pages/Heatmap').then((m) => ({ default: m.Heatmap })))
 const Insights = lazy(() => import('./pages/Insights').then((m) => ({ default: m.Insights })))
 const Users = lazy(() => import('./pages/Users').then((m) => ({ default: m.Users })))
 const Records = lazy(() => import('./pages/Records').then((m) => ({ default: m.Records })))
@@ -53,6 +54,7 @@ export default function App() {
               {view === 'overview' && <Overview />}
               {view === 'teams' && <Teams />}
               {view === 'people' && <People />}
+              {view === 'heatmap' && <Heatmap />}
               {view === 'insights' && <Insights />}
               {view === 'records' && <Records />}
               {view === 'users' && <Users />}
