@@ -11,7 +11,10 @@ export interface Notificacao {
   pnt: number
   valor: number
   tratado: boolean
+  /** prazo de vencimento, em dias úteis a partir da data de lançamento */
   dias: number | null
+  /** data de lançamento da notificação (YYYY-MM-DD); o prazo conta a partir dela */
+  dataLancamento?: string | null
   inspecao: number | null
   coordenador: string
   processo: string

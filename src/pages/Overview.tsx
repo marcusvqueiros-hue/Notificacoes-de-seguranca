@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { BadgeDollarSign, CheckCircle2, FileWarning, Hourglass, ListChecks, Receipt } from 'lucide-react'
+import { AlarmClockOff, BadgeDollarSign, CheckCircle2, FileWarning, Hourglass, ListChecks, Receipt } from 'lucide-react'
 import { useStore } from '../lib/store'
 import { useData, usePal } from '../lib/hooks'
 import { groupBy, monthly, sortDesc } from '../lib/aggregate'
@@ -10,6 +10,7 @@ import { Chart } from '../components/Chart'
 import { KpiCard, Panel } from '../components/ui'
 import { InsightList } from '../components/InsightList'
 import { DataTable, type Col } from '../components/DataTable'
+import { hojeIso, resumoVencidas, type Vencida } from '../lib/prazo'
 import type { Notificacao } from '../lib/types'
 
 export const Badge = ({ ok }: { ok: boolean }) => (
@@ -21,6 +22,7 @@ export function Overview() {
   const toggle = useStore((s) => s.toggleFilter)
   const setPage = useStore((s) => s.setPage)
   const setFilter = useStore((s) => s.setFilter)
+  const isAdmin = useStore((s) => s.session?.role === 'admin')
   const p = usePal()
 
   const m = useMemo(() => monthly(filtered), [filtered])
@@ -32,6 +34,19 @@ export function Overview() {
   const nc = useMemo(() => sortDesc(groupBy(except('naoConformidade'), (n) => n.naoConformidade)), [except])
   const eq = useMemo(() => sortDesc(groupBy(except('equipe'), (n) => n.equipe)), [except])
   const insights = useMemo(() => buildInsights(filtered).slice(0, 4), [filtered])
+
+  const hoje = hojeIso()
+  const venc = useMemo(() => resumoVencidas(filtered, hoje), [filtered, hoje])
+  const vencCols: Col<Vencida>[] = [
+    { key: 'n', label: 'Nº', render: (r) => r.notificacao ?? '—', sort: (r) => r.notificacao ?? 0, total: `${fmtNum(venc.list.length)} vencidas` },
+    { key: 'eq', label: 'Equipe', render: (r) => r.equipe, sort: (r) => r.equipe },
+    { key: 'b', label: 'Base', render: (r) => r.base, sort: (r) => r.base },
+    { key: 'nc', label: 'Não conformidade', render: (r) => <span title={r.naoConformidade}>{short(r.naoConformidade, 70)}{r.itens > 1 && <span className="ml-1 text-muted"> +{r.itens - 1}</span>}</span> },
+    { key: 'l', label: 'Lançamento', align: 'center', render: (r) => fmtDate(r.lancamento), sort: (r) => r.lancamento },
+    { key: 'v', label: 'Venceu em', align: 'center', render: (r) => fmtDate(r.vencimento), sort: (r) => r.vencimento },
+    { key: 'a', label: 'Atraso', align: 'center', render: (r) => <span className="inline-flex rounded-full bg-bad/15 px-2 py-0.5 text-[11px] font-bold text-bad">{r.atraso} {r.atraso === 1 ? 'dia útil' : 'dias úteis'}</span>, sort: (r) => r.atraso },
+    { key: 'm', label: 'Multa', align: 'right', render: (r) => fmtBRL(r.valor), sort: (r) => r.valor, total: fmtBRL(venc.list.reduce((a, r) => a + r.valor, 0)) },
+  ]
 
   const labels = mAll.map((x) => x.mes)
   const cols: Col<Notificacao>[] = [
@@ -55,6 +70,31 @@ export function Overview() {
         <KpiCard delay={0.2} label="Em tratamento" value={k.abertos} format={fmtNum} icon={<Hourglass size={17} />} color={p.accent} spark={m.map((x) => x.abertos)} hint="aguardando resposta" onClick={() => setFilter('tratado', filters.tratado.includes('Em tratamento') ? [] : ['Em tratamento'])} active={filters.tratado.includes('Em tratamento')} />
         <KpiCard delay={0.25} label="Multa média / item" value={k.ticket} format={fmtBRL} icon={<Receipt size={17} />} color="#06b6d4" hint="ticket médio" />
       </div>
+
+      <Panel
+        title="Notificações vencidas"
+        subtitle="Em tratamento com o prazo vencido · dias úteis a partir da data de lançamento, sem fins de semana e feriados nacionais"
+        className={venc.list.length ? 'border-bad/40' : ''}
+        action={
+          <div className="flex items-center gap-2" data-snap-ignore="1">
+            {isAdmin && <button className="text-xs font-semibold text-brand hover:underline" onClick={() => setPage('records')}>Abrir Notificações →</button>}
+            <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${venc.list.length ? 'bg-bad/15 text-bad' : 'bg-good/15 text-good'}`}>
+              <AlarmClockOff size={13} /> {venc.list.length ? `${fmtNum(venc.list.length)} ${venc.list.length === 1 ? 'vencida' : 'vencidas'}` : 'Nenhuma vencida'}
+            </span>
+          </div>
+        }
+      >
+        {venc.list.length > 0 ? (
+          <DataTable rows={venc.list} cols={vencCols} rowKey={(r) => r.key} pageSize={5} defaultSort={{ key: 'a', dir: 'desc' }} />
+        ) : (
+          <p className="px-3 py-4 text-sm text-muted">Nenhuma notificação em tratamento está com o prazo vencido.</p>
+        )}
+        {venc.semPrazo > 0 && (
+          <p className="px-3 pb-2 text-[11px] text-muted">
+            {fmtNum(venc.semPrazo)} {venc.semPrazo === 1 ? 'notificação em tratamento está' : 'notificações em tratamento estão'} sem data de lançamento ou prazo e não entram nesta conta.
+          </p>
+        )}
+      </Panel>
 
       {insights.length > 0 && (
         <div>

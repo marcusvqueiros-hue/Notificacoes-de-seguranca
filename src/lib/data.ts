@@ -23,6 +23,7 @@ interface Row {
   valor: number | string
   tratado: boolean
   dias: number | null
+  data_lancamento?: string | null
   inspecao: number | null
   coordenador: string
   processo: string
@@ -45,6 +46,7 @@ const fromRow = (r: Row): Notificacao => ({
   valor: Number(r.valor),
   tratado: r.tratado,
   dias: r.dias,
+  dataLancamento: r.data_lancamento ?? null,
   inspecao: r.inspecao == null ? null : Number(r.inspecao),
   coordenador: r.coordenador,
   processo: r.processo,

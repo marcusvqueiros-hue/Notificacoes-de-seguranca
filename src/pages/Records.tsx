@@ -11,12 +11,13 @@ import { matchRows, planCleanup } from '../lib/dedupe'
 import { CollaboratorInput } from '../components/CollaboratorInput'
 import { anexoContagem, anexoDelete, anexoGet, anexoList, anexoSave, obsList, obsSave, openAttachment, type Anexo, type Obs, type PdfKind } from '../lib/extras'
 import { NO_CHANGE, PdfSlot, type PdfChange } from '../components/PdfSlot'
+import { diasAtraso, hojeIso, isVencida, vencimento } from '../lib/prazo'
 import type { Notificacao, NotificacaoInput } from '../lib/types'
 
 const today = () => new Date().toISOString().slice(0, 10)
 const blank = (): NotificacaoInput => ({
   notificacao: null, data: today(), inspetor: '', equipe: '', base: '', gerencia: '', naoConformidade: '', qnt: 1, pnt: 5, valor: 500,
-  tratado: false, dias: null, inspecao: null, coordenador: '', processo: '', status: '', eletricistas: [],
+  tratado: false, dias: 5, dataLancamento: null, inspecao: null, coordenador: '', processo: '', status: '', eletricistas: [],
 })
 
 function Datalist({ id, options }: { id: string; options: string[] }) {
@@ -44,6 +45,19 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
   const num = f.notificacao
   const cnt = (k: PdfKind) => (num != null ? pdfNums[k][num] ?? 0 : 0)
   const obsMeta = num != null ? obsMap[String(num)] : undefined
+  const hoje = hojeIso()
+  const venc = vencimento(f)
+  const atraso = diasAtraso(f, hoje)
+  const prazoMsg = f.tratado ? (
+    <span className="text-muted">Notificação tratada: não vence.</span>
+  ) : venc ? (
+    <span className={atraso ? 'font-semibold text-bad' : 'text-muted'}>
+      Vence em {fmtDate(venc)} ({f.dias} {f.dias === 1 ? 'dia útil' : 'dias úteis'} após o lançamento, sem sábados, domingos e feriados nacionais)
+      {atraso > 0 && ` · vencida há ${atraso} ${atraso === 1 ? 'dia útil' : 'dias úteis'}`}
+    </span>
+  ) : (
+    <span className="text-muted">Informe a data de lançamento e o prazo para calcular o vencimento (só entram na conta de vencidas as notificações com os dois).</span>
+  )
   const opt = useMemo(() => ({
     inspetor: uniq(rows, 'inspetor'), equipe: uniq(rows, 'equipe'), base: uniq(rows, 'base'), gerencia: uniq(rows, 'gerencia'),
     nc: uniq(rows, 'naoConformidade'), coord: uniq(rows, 'coordenador'), proc: uniq(rows, 'processo'),
@@ -117,7 +131,9 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
           <option value="">—</option><option>NC RESPONDIDA</option><option>NC CONTESTADA</option>
         </select>
       </Field>
-      <Field label="Dias de tratativa"><input type="number" min={0} className="input" value={f.dias ?? ''} onChange={(e) => set('dias', e.target.value ? Number(e.target.value) : null)} /></Field>
+      <Field label="Data de lançamento"><input type="date" className="input" value={f.dataLancamento ?? ''} onChange={(e) => set('dataLancamento', e.target.value || null)} /></Field>
+      <Field label="Prazo (dias úteis)"><input type="number" min={0} className="input" value={f.dias ?? ''} onChange={(e) => set('dias', e.target.value ? Number(e.target.value) : null)} /></Field>
+      <p className="col-span-2 -mt-1 text-[11px] md:col-span-4" aria-live="polite">{prazoMsg}</p>
       <div className="col-span-2 md:col-span-4">
         <Field label="Colaboradores / eletricistas">
           <CollaboratorInput value={elet} onChange={setElet} options={opt.colab} />
@@ -170,6 +186,7 @@ export function Records() {
   const file = useRef<HTMLInputElement>(null)
   const [pdfNums, setPdfNums] = useState<Record<PdfKind, Record<number, number>>>({ notificacao: {}, resposta: {} })
   const [obsMap, setObsMap] = useState<Record<string, Obs>>({})
+  const hoje = hojeIso()
 
   const loadExtras = useCallback(async () => {
     if (!session) return
@@ -247,6 +264,20 @@ export function Records() {
     { key: 'p', label: 'Pts', align: 'center', render: (r) => r.pnt, sort: (r) => r.pnt },
     { key: 'v', label: 'Multa', align: 'right', render: (r) => fmtBRL(r.valor), sort: (r) => r.valor, total: fmtBRL(list.reduce((a, r) => a + r.valor, 0)) },
     { key: 't', label: 'Tratado', align: 'center', render: (r) => <Badge ok={r.tratado} />, sort: (r) => (r.tratado ? 1 : 0) },
+    {
+      key: 'venc', label: 'Vencimento', align: 'center',
+      sort: (r) => vencimento(r) ?? '',
+      render: (r) => {
+        const v = vencimento(r)
+        if (!v) return <span className="text-muted/40" title="Sem data de lançamento ou prazo">—</span>
+        const late = isVencida(r, hoje)
+        return (
+          <span className={late ? 'font-bold text-bad' : r.tratado ? 'text-muted' : ''} title={late ? `Vencida há ${diasAtraso(r, hoje)} dia(s) útil(eis)` : undefined}>
+            {fmtDate(v)}{late && ' ⚠'}
+          </span>
+        )
+      },
+    },
     ...(admin ? [
       ...(['notificacao', 'resposta'] as PdfKind[]).map((kind) => ({
         key: kind === 'resposta' ? 'resp' : 'pdf', label: kind === 'resposta' ? 'Resposta' : 'Anexo', align: 'center' as const,
@@ -288,9 +319,9 @@ export function Records() {
   ]
 
   function exportCsv() {
-    const head = ['Nº', 'Data', 'Inspetor', 'Equipe', 'Base', 'Gerência', 'Não conformidade', 'Qnt', 'Pnt', 'Valor', 'Tratado', 'Coordenador', 'Processo', 'Status', 'Eletricistas', 'Observação']
+    const head = ['Nº', 'Data', 'Inspetor', 'Equipe', 'Base', 'Gerência', 'Não conformidade', 'Qnt', 'Pnt', 'Valor', 'Tratado', 'Lançamento', 'Prazo (dias úteis)', 'Vencimento', 'Coordenador', 'Processo', 'Status', 'Eletricistas', 'Observação']
     const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
-    const lines = list.map((r) => [r.notificacao ?? '', r.data, r.inspetor, r.equipe, r.base, r.gerencia, r.naoConformidade, r.qnt, r.pnt, r.valor, r.tratado ? 'SIM' : 'NÃO', r.coordenador, r.processo, r.status, r.eletricistas.join('; '), obsMap[String(r.notificacao)]?.texto ?? ''].map(esc).join(';'))
+    const lines = list.map((r) => [r.notificacao ?? '', r.data, r.inspetor, r.equipe, r.base, r.gerencia, r.naoConformidade, r.qnt, r.pnt, r.valor, r.tratado ? 'SIM' : 'NÃO', r.dataLancamento ?? '', r.dias ?? '', vencimento(r) ?? '', r.coordenador, r.processo, r.status, r.eletricistas.join('; '), obsMap[String(r.notificacao)]?.texto ?? ''].map(esc).join(';'))
     const blob = new Blob(['﻿' + [head.map(esc).join(';'), ...lines].join('\n')], { type: 'text/csv;charset=utf-8' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)

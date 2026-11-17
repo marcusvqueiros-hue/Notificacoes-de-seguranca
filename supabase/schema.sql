@@ -14,7 +14,8 @@ create table if not exists public.notificacoes (
   pnt int not null default 0,
   valor numeric(12,2) not null default 0,
   tratado boolean not null default false,
-  dias int,
+  dias int,                -- prazo de vencimento, em dias úteis a partir de data_lancamento
+  data_lancamento date,
   inspecao bigint,
   coordenador text not null default '',
   processo text not null default '',
@@ -97,18 +98,20 @@ begin
       nao_conformidade = coalesce(p->>'naoConformidade',''),
       qnt = coalesce((p->>'qnt')::int,1), pnt = coalesce((p->>'pnt')::int,0),
       valor = coalesce((p->>'valor')::numeric,0), tratado = coalesce((p->>'tratado')::boolean,false),
-      dias = nullif(p->>'dias','')::int, inspecao = nullif(p->>'inspecao','')::bigint,
+      dias = nullif(p->>'dias','')::int, data_lancamento = nullif(p->>'dataLancamento','')::date,
+      inspecao = nullif(p->>'inspecao','')::bigint,
       coordenador = coalesce(p->>'coordenador',''), processo = coalesce(p->>'processo',''),
       status = coalesce(p->>'status',''),
       eletricistas = coalesce(array(select jsonb_array_elements_text(p->'eletricistas')), '{}'),
       updated_at = now()
     where id = v_id returning * into r;
   else
-    insert into notificacoes (notificacao,data,inspetor,equipe,base,gerencia,nao_conformidade,qnt,pnt,valor,tratado,dias,inspecao,coordenador,processo,status,eletricistas)
+    insert into notificacoes (notificacao,data,inspetor,equipe,base,gerencia,nao_conformidade,qnt,pnt,valor,tratado,dias,data_lancamento,inspecao,coordenador,processo,status,eletricistas)
     values ((p->>'notificacao')::bigint, (p->>'data')::date, coalesce(p->>'inspetor',''), coalesce(p->>'equipe',''),
       coalesce(p->>'base',''), coalesce(p->>'gerencia',''), coalesce(p->>'naoConformidade',''),
       coalesce((p->>'qnt')::int,1), coalesce((p->>'pnt')::int,0), coalesce((p->>'valor')::numeric,0),
-      coalesce((p->>'tratado')::boolean,false), nullif(p->>'dias','')::int, nullif(p->>'inspecao','')::bigint,
+      coalesce((p->>'tratado')::boolean,false), nullif(p->>'dias','')::int, nullif(p->>'dataLancamento','')::date,
+      nullif(p->>'inspecao','')::bigint,
       coalesce(p->>'coordenador',''), coalesce(p->>'processo',''), coalesce(p->>'status',''),
       coalesce(array(select jsonb_array_elements_text(p->'eletricistas')), '{}'))
     returning * into r;
@@ -138,11 +141,12 @@ returns int language plpgsql security definer set search_path = public as $$
 declare n int;
 begin
   if not _is_admin(p_token) then raise exception 'apenas administradores'; end if;
-  insert into notificacoes (notificacao,data,inspetor,equipe,base,gerencia,nao_conformidade,qnt,pnt,valor,tratado,dias,inspecao,coordenador,processo,status,eletricistas)
+  insert into notificacoes (notificacao,data,inspetor,equipe,base,gerencia,nao_conformidade,qnt,pnt,valor,tratado,dias,data_lancamento,inspecao,coordenador,processo,status,eletricistas)
   select (e->>'notificacao')::bigint, (e->>'data')::date, coalesce(e->>'inspetor',''), coalesce(e->>'equipe',''),
     coalesce(e->>'base',''), coalesce(e->>'gerencia',''), coalesce(e->>'naoConformidade',''),
     coalesce((e->>'qnt')::int,1), coalesce((e->>'pnt')::int,0), coalesce((e->>'valor')::numeric,0),
-    coalesce((e->>'tratado')::boolean,false), nullif(e->>'dias','')::int, nullif(e->>'inspecao','')::bigint,
+    coalesce((e->>'tratado')::boolean,false), nullif(e->>'dias','')::int, nullif(e->>'dataLancamento','')::date,
+    nullif(e->>'inspecao','')::bigint,
     coalesce(e->>'coordenador',''), coalesce(e->>'processo',''), coalesce(e->>'status',''),
     coalesce(array(select jsonb_array_elements_text(e->'eletricistas')), '{}')
   from jsonb_array_elements(p) e;
