@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { Eye, EyeOff, FileSpreadsheet, Loader2, Pencil, Plus, Search, ShieldCheck, Trash2, UserCheck, UserX, Users as UsersIcon } from 'lucide-react'
 import { useStore } from '../lib/store'
 import { usrDelete, usrImport, usrList, usrSave } from '../lib/data'
-import { fmtNum } from '../lib/format'
+import { fmtDateTime, fmtNum } from '../lib/format'
 import { Field, Modal, Panel, useDebounced } from '../components/ui'
 import { KpiCard } from '../components/ui'
 import { DataTable, type Col } from '../components/DataTable'
@@ -138,6 +138,11 @@ export function Users() {
     { key: 'ger', label: 'Gerência', render: (u) => u.gerencia || '—', sort: (u) => u.gerencia },
     { key: 'role', label: 'Perfil', align: 'center', render: (u) => <RoleBadge role={u.role} />, sort: (u) => u.role },
     { key: 'st', label: 'Situação', align: 'center', render: (u) => <span className={`text-[11px] font-semibold ${u.ativo ? 'text-good' : 'text-muted'}`}>{u.ativo ? 'Ativo' : 'Inativo'}</span>, sort: (u) => (u.ativo ? 1 : 0) },
+    {
+      key: 'ua', label: 'Último acesso', align: 'center',
+      render: (u) => (u.ultimoAcesso ? <span className="whitespace-nowrap tabular-nums">{fmtDateTime(u.ultimoAcesso)}</span> : <span className="text-xs text-muted">Nunca acessou</span>),
+      sort: (u) => u.ultimoAcesso ?? '',
+    },
     {
       key: 'a', label: '', align: 'right',
       render: (u) => (

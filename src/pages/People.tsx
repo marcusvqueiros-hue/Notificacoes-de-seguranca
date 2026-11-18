@@ -8,6 +8,7 @@ import { MESES, fmtBRL, fmtNum, mesIdx, short } from '../lib/format'
 import { Chart } from '../components/Chart'
 import { KpiCard, Panel } from '../components/ui'
 import { DataTable, type Col } from '../components/DataTable'
+import { MultiSelect } from '../components/MultiSelect'
 
 interface Pair { id: string; colaborador: string; nc: string; itens: number; valor: number }
 
@@ -81,13 +82,9 @@ export function People() {
           <KpiCard delay={0.1} label="Colaboradores" value={people.length} format={fmtNum} icon={<UserRound size={17} />} color="#8b5cf6" hint={semColab.length ? `citados · ${semColab.length} itens sem colaborador (${fmtBRL(valorSemColab)})` : 'citados'} />
           <KpiCard delay={0.15} label="Média / colaborador" value={people.length ? valorAtribuido / people.length : 0} format={fmtBRL} icon={<Calculator size={17} />} color={p.accent} hint="multa rateada" />
         </div>
-        <label className="w-full text-xs font-semibold text-muted xl:w-96">
-          Não conformidade
-          <select className="input mt-1" value={filters.naoConformidade[0] ?? ''} onChange={(e) => setFilter('naoConformidade', e.target.value ? [e.target.value] : [])}>
-            <option value="">Todas</option>
-            {ncOptions.map((o) => <option key={o} value={o}>{short(o, 90)}</option>)}
-          </select>
-        </label>
+        <div className="w-full xl:w-96">
+          <MultiSelect label="Não conformidade" options={ncOptions} value={filters.naoConformidade} onChange={(v) => setFilter('naoConformidade', v)} allLabel="Todas" noun="não conformidades" />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">

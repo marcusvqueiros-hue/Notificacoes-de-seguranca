@@ -12,6 +12,10 @@ export const fmtCompact = (v: number) =>
       : `R$ ${v}`
 export const fmtDate = (iso: string) => (iso ? iso.split('-').reverse().join('/') : '')
 
+/** Data e hora no fuso do navegador, ex.: 18/11/2026 17:32 */
+export const fmtDateTime = (iso: string) =>
+  new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+
 export const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 export const mesIdx = (iso: string) => Number(iso.slice(5, 7)) - 1
 export const anoOf = (iso: string) => iso.slice(0, 4)

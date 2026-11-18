@@ -76,6 +76,8 @@ export interface AppUser {
   processo: string
   gerencia: string
   ativo: boolean
+  /** data e hora (ISO) do último login; null/ausente = nunca acessou */
+  ultimoAcesso?: string | null
 }
 
-export type AppUserInput = Omit<AppUser, 'ativo'> & { ativo?: boolean; senha?: string }
+export type AppUserInput = Omit<AppUser, 'ativo' | 'ultimoAcesso'> & { ativo?: boolean; senha?: string }

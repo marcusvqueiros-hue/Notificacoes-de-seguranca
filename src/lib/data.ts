@@ -78,8 +78,12 @@ export async function login(user: string, pass: string): Promise<Session | null>
   }
   if (isLocalMode) {
     await new Promise((r) => setTimeout(r, 700))
-    if (user.trim().toLowerCase() === '@admin' && pass === 'admin123')
+    if (user.trim().toLowerCase() === '@admin' && pass === 'admin123') {
+      const list = localUsers()
+      const i = list.findIndex((x) => x.username.toLowerCase() === '@marcusqueiros')
+      if (i >= 0) { list[i].ultimoAcesso = new Date().toISOString(); localStorage.setItem(LS_USERS, JSON.stringify(list)) }
       return { token: 'local', username: '@admin', nome: 'Administrador', role: 'admin' }
+    }
     return null
   }
   throw new Error('Supabase não configurado (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY).')
