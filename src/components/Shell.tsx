@@ -9,6 +9,7 @@ import { BrandLogo } from './BrandLogo'
 import { SnapshotButton } from './Snapshot'
 import { ChangePasswordModal } from './ChangePassword'
 import { uniq } from '../lib/aggregate'
+import { short } from '../lib/format'
 import type { FilterKey } from '../lib/types'
 
 const NAV: { id: Page; label: string; icon: ReactNode; admin?: boolean }[] = [
@@ -30,6 +31,7 @@ export const FILTER_DEFS: { key: FilterKey; label: string; searchable?: boolean 
   { key: 'coordenador', label: 'Coordenador' },
   { key: 'tratado', label: 'Situação' },
   { key: 'status', label: 'Status' },
+  { key: 'naoConformidade', label: 'Não conformidade', searchable: true },
   { key: 'inspetor', label: 'Inspetor', searchable: true },
   { key: 'equipe', label: 'Equipe', searchable: true },
   { key: 'colaborador', label: 'Colaborador', searchable: true },
@@ -46,6 +48,7 @@ function FilterGroup({ k, label, searchable }: { k: FilterKey; label: string; se
     if (k === 'mes') return ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'].filter((m) => all.includes(m))
     return all
   }, [rows, k])
+  const long = k === 'naoConformidade' // opções são frases longas: lista em vez de "pílulas"
   const shown = q ? options.filter((o) => o.toLowerCase().includes(q.toLowerCase())) : options
 
   return (
@@ -66,7 +69,7 @@ function FilterGroup({ k, label, searchable }: { k: FilterKey; label: string; se
                 <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar…" className="input !py-1 !pl-7 text-xs" />
               </div>
             )}
-            <div className={`flex flex-wrap gap-1.5 pb-1.5 ${options.length > 14 ? 'max-h-44 overflow-y-auto pr-1' : ''}`}>
+            <div className={`${long ? 'flex flex-col gap-1' : 'flex flex-wrap gap-1.5'} pb-1.5 ${long || options.length > 14 ? 'max-h-44 overflow-y-auto pr-1' : ''}`}>
               {shown.map((o) => {
                 const on = selected.includes(o)
                 return (
@@ -74,7 +77,8 @@ function FilterGroup({ k, label, searchable }: { k: FilterKey; label: string; se
                     key={o}
                     onClick={() => toggle(k, o)}
                     aria-pressed={on}
-                    className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition ${on ? 'border-transparent bg-brand text-white shadow-md' : 'border-line bg-surface2 text-ink hover:border-brand'}`}
+                    title={long ? o : undefined}
+                    className={`border text-[11px] font-medium transition ${long ? 'w-full rounded-lg px-2.5 py-1.5 text-left leading-snug' : 'rounded-full px-2.5 py-1'} ${on ? 'border-transparent bg-brand text-white shadow-md' : 'border-line bg-surface2 text-ink hover:border-brand'}`}
                   >
                     {o}
                   </button>
@@ -170,8 +174,8 @@ export function Shell({ children }: { children: ReactNode }) {
           <h1 className="font-display text-lg font-bold">{NAV.find((n) => n.id === page)?.label}</h1>
           <div className="ml-3 hidden min-w-0 flex-1 flex-wrap items-center gap-1.5 md:flex">
             {active.slice(0, 6).map(({ k, v }) => (
-              <button key={k + v} className="chip" onClick={() => toggleFilter(k, v)} title="Remover filtro">
-                {v} <X size={11} />
+              <button key={k + v} className="chip" onClick={() => toggleFilter(k, v)} title={`Remover filtro: ${v}`}>
+                {short(v, 32)} <X size={11} />
               </button>
             ))}
             {active.length > 6 && <span className="text-xs text-muted">+{active.length - 6}</span>}

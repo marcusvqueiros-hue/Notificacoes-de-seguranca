@@ -13,6 +13,11 @@ import { DataTable, type Col } from '../components/DataTable'
 import { hojeIso, resumoVencidas, type Vencida } from '../lib/prazo'
 import type { Notificacao } from '../lib/types'
 
+/** Altura do gráfico de ranking: uma linha por item (todas as barras visíveis, o painel rola). */
+const ROW_H = 30
+const RANK_MAX = 520 // altura máxima do painel antes de rolar
+const rankH = (n: number) => Math.max(200, n * ROW_H + 8)
+
 export const Badge = ({ ok }: { ok: boolean }) => (
   <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${ok ? 'bg-good/15 text-good' : 'bg-bad/15 text-bad'}`}>{ok ? 'SIM' : 'NÃO'}</span>
 )
@@ -125,11 +130,15 @@ export function Overview() {
         <Panel title="Valor de multa por base" delay={0.1}>
           <Chart height={250} option={columnOption(p, baseV, 'valor', filters.base, p.warn)} onPick={(n) => toggle('base', n)} />
         </Panel>
-        <Panel title="Ranking de não conformidades" subtitle="Por quantidade de itens" delay={0.05}>
-          <Chart height={380} option={hbarOption(p, nc, 'itens', filters.naoConformidade, 14, p.brand, 44)} onPick={(n) => toggle('naoConformidade', nc.find((x) => x.key === n)?.key ?? n)} />
+        <Panel title="Ranking de não conformidades" subtitle={`Por quantidade de itens · ${fmtNum(nc.length)} não conformidades${rankH(nc.length) > RANK_MAX ? ' · role para ver todas' : ''}`} delay={0.05}>
+          <div className="max-h-[520px] overflow-y-auto pr-1">
+            <Chart height={rankH(nc.length)} option={hbarOption(p, nc, 'itens', filters.naoConformidade, nc.length, p.brand, 44)} onPick={(n) => toggle('naoConformidade', nc.find((x) => x.key === n)?.key ?? n)} />
+          </div>
         </Panel>
-        <Panel title="Ranking de notificações por equipe" subtitle="Por quantidade de itens" delay={0.1}>
-          <Chart height={380} option={hbarOption(p, eq, 'itens', filters.equipe, 14, '#8b5cf6')} onPick={(n) => toggle('equipe', n)} />
+        <Panel title="Ranking de notificações por equipe" subtitle={`Por quantidade de itens · ${fmtNum(eq.length)} equipes${rankH(eq.length) > RANK_MAX ? ' · role para ver todas' : ''}`} delay={0.1}>
+          <div className="max-h-[520px] overflow-y-auto pr-1">
+            <Chart height={rankH(eq.length)} option={hbarOption(p, eq, 'itens', filters.equipe, eq.length, '#8b5cf6')} onPick={(n) => toggle('equipe', n)} />
+          </div>
         </Panel>
       </div>
 
