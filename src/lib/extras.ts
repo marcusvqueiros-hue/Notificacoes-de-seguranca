@@ -1,6 +1,6 @@
 import { supabase } from './data'
 
-/** Anexo (PDF ou imagem JPG/PNG) da notificação e da resposta, e observação de cada notificação, por Nº. Somente administradores. */
+/** Anexos (PDF ou imagem JPG/PNG) da notificação (por Nº) e da resposta (por item) e observação de cada item. Somente administradores. */
 export const PDF_MAX_BYTES = 4 * 1024 * 1024
 
 /** 'notificacao' = arquivos da notificação recebida; 'resposta' = arquivos da resposta enviada. */
@@ -19,7 +19,7 @@ export interface Obs { texto: string; por?: string; em?: string }
 
 interface LocalAnexo extends Anexo { tipo: PdfKind; numero?: number; item?: string; base64: string }
 const LS_ANEXOS = 'cgb-local-anexos'
-const LS_OBS = 'cgb-local-obs'
+const LS_OBS = 'cgb-local-obs-item'
 const localAnexos = (): LocalAnexo[] => JSON.parse(localStorage.getItem(LS_ANEXOS) || '[]')
 const saveLocalAnexos = (l: LocalAnexo[]) => localStorage.setItem(LS_ANEXOS, JSON.stringify(l))
 const localObs = (): Record<string, Obs> => JSON.parse(localStorage.getItem(LS_OBS) || '{}')
@@ -133,23 +133,24 @@ export function openAttachment(p: { nome: string; base64: string }) {
   setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
+/** Observações de todos os itens, por id do item (cada item/não conformidade tem a sua). */
 export async function obsList(token: string): Promise<Record<string, Obs>> {
   if (supabase) {
-    const { data, error } = await supabase.rpc('obs_list', { p_token: token })
+    const { data, error } = await supabase.rpc('obs_item_list', { p_token: token })
     if (error) throw new Error(error.message)
     return data as Record<string, Obs>
   }
   return localObs()
 }
 
-export async function obsSave(token: string, numero: number, texto: string, autor: string) {
+export async function obsSave(token: string, item: string, texto: string, autor: string) {
   if (supabase) {
-    const { error } = await supabase.rpc('obs_save', { p_token: token, p_numero: numero, p_texto: texto })
+    const { error } = await supabase.rpc('obs_item_save', { p_token: token, p_item: item, p_texto: texto })
     if (error) throw new Error(error.message)
     return
   }
   const all = localObs()
-  if (texto.trim()) all[numero] = { texto: texto.trim(), por: autor, em: new Date().toISOString() }
-  else delete all[numero]
+  if (texto.trim()) all[item] = { texto: texto.trim(), por: autor, em: new Date().toISOString() }
+  else delete all[item]
   localStorage.setItem(LS_OBS, JSON.stringify(all))
 }

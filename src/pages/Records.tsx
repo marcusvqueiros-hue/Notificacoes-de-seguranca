@@ -39,7 +39,8 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
   const [valorManual, setValorManual] = useState(!!initial.id)
   const [busy, setBusy] = useState(false)
   const [elet, setElet] = useState<string[]>(initial.eletricistas)
-  const obsInit = (initial.notificacao != null ? obsMap[String(initial.notificacao)]?.texto : '') ?? ''
+  // observação: de cada item (não conformidade), não da notificação inteira
+  const obsInit = (initial.id ? obsMap[initial.id]?.texto : '') ?? ''
   const [obs, setObs] = useState(obsInit)
   const [pdfs, setPdfs] = useState<Record<PdfKind, PdfChange>>({ notificacao: NO_CHANGE, resposta: NO_CHANGE })
   const num = f.notificacao
@@ -48,7 +49,7 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
   const anchorR: AnexoRef | null = initial.id ? { kind: 'resposta', item: initial.id } : null
   const cntN = num != null ? pdfNums.notificacao[num] ?? 0 : 0
   const cntR = initial.id ? pdfNums.resposta[initial.id] ?? 0 : 0
-  const obsMeta = num != null ? obsMap[String(num)] : undefined
+  const obsMeta = initial.id ? obsMap[initial.id] : undefined
   const hoje = hojeIso()
   const venc = vencimento(f)
   const atraso = diasAtraso(f, hoje)
@@ -72,8 +73,8 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
 
   async function submit(e: FormEvent) {
     e.preventDefault()
-    if ((pdfs.notificacao.add.length || obs.trim()) && num == null) {
-      notify('Informe o nº da notificação para gravar os arquivos da notificação e as observações.', 'err')
+    if (pdfs.notificacao.add.length && num == null) {
+      notify('Informe o nº da notificação para gravar os arquivos da notificação.', 'err')
       return
     }
     setBusy(true)
@@ -84,8 +85,9 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
         if (num != null) {
           for (const id of pdfs.notificacao.removeIds) await anexoDelete(session.token, id)
           for (const file of pdfs.notificacao.add) await anexoSave(session.token, { kind: 'notificacao', numero: num }, file)
-          if (obs.trim() !== obsInit.trim()) await obsSave(session.token, num, obs, session.username)
         }
+        // observação: grava no item (id do item recém-salvo, também para item novo)
+        if (obs.trim() !== obsInit.trim()) await obsSave(session.token, saved.id, obs, session.username)
         // resposta: grava no item (usa o id do item recém-salvo, que também vale para item novo)
         for (const id of pdfs.resposta.removeIds) await anexoDelete(session.token, id)
         for (const file of pdfs.resposta.add) await anexoSave(session.token, { kind: 'resposta', item: saved.id }, file)
@@ -157,13 +159,13 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
             rows={3}
             maxLength={4000}
             className="input"
-            placeholder="Observações sobre esta notificação (visível só para administradores)…"
+            placeholder="Observações sobre este item (visível só para administradores)…"
             value={obs}
             onChange={(e) => setObs(e.target.value)}
           />
         </Field>
         <p className="mt-1 text-[11px] text-muted">
-          {obs.length}/4000 · vale para todos os itens da notificação {num ?? ''}
+          {obs.length}/4000 · vale só para este item (esta não conformidade)
           {obsMeta?.por && <> · última edição por {obsMeta.por}{obsMeta.em ? ` em ${new Date(obsMeta.em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}` : ''}</>}
         </p>
       </div>
@@ -256,7 +258,7 @@ export function Records() {
   const list = useMemo(() => {
     const t = dq.trim().toLowerCase()
     if (!t) return filtered
-    return filtered.filter((r) => [r.notificacao ?? '', r.equipe, r.naoConformidade, r.inspetor, r.base, r.coordenador, obsMap[String(r.notificacao)]?.texto ?? '', ...r.eletricistas].join(' ').toLowerCase().includes(t))
+    return filtered.filter((r) => [r.notificacao ?? '', r.equipe, r.naoConformidade, r.inspetor, r.base, r.coordenador, obsMap[r.id]?.texto ?? '', ...r.eletricistas].join(' ').toLowerCase().includes(t))
   }, [filtered, dq, obsMap])
 
   const cols: Col<Notificacao>[] = [
@@ -309,7 +311,7 @@ export function Records() {
       {
         key: 'obs', label: 'Observação',
         render: (r: Notificacao) => {
-          const o = r.notificacao != null ? obsMap[String(r.notificacao)] : undefined
+          const o = obsMap[r.id]
           return o ? <span className="inline-flex items-center gap-1.5" title={o.texto}><StickyNote size={13} className="shrink-0 text-accent" />{short(o.texto, 46)}</span> : <span className="text-muted/40">—</span>
         },
       },
@@ -328,7 +330,7 @@ export function Records() {
   function exportCsv() {
     const head = ['Nº', 'Data', 'Inspetor', 'Equipe', 'Base', 'Gerência', 'Não conformidade', 'Qnt', 'Pnt', 'Valor', 'Tratado', 'Lançamento', 'Prazo (dias úteis)', 'Vencimento', 'Coordenador', 'Processo', 'Status', 'Eletricistas', 'Observação']
     const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
-    const lines = list.map((r) => [r.notificacao ?? '', r.data, r.inspetor, r.equipe, r.base, r.gerencia, r.naoConformidade, r.qnt, r.pnt, r.valor, r.tratado ? 'SIM' : 'NÃO', r.dataLancamento ?? '', r.dias ?? '', vencimento(r) ?? '', r.coordenador, r.processo, r.status, r.eletricistas.join('; '), obsMap[String(r.notificacao)]?.texto ?? ''].map(esc).join(';'))
+    const lines = list.map((r) => [r.notificacao ?? '', r.data, r.inspetor, r.equipe, r.base, r.gerencia, r.naoConformidade, r.qnt, r.pnt, r.valor, r.tratado ? 'SIM' : 'NÃO', r.dataLancamento ?? '', r.dias ?? '', vencimento(r) ?? '', r.coordenador, r.processo, r.status, r.eletricistas.join('; '), obsMap[r.id]?.texto ?? ''].map(esc).join(';'))
     const blob = new Blob(['﻿' + [head.map(esc).join(';'), ...lines].join('\n')], { type: 'text/csv;charset=utf-8' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
