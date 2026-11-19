@@ -46,7 +46,7 @@ export function Overview() {
     { key: 'n', label: 'Nº', render: (r) => r.notificacao ?? '—', sort: (r) => r.notificacao ?? 0, total: `${fmtNum(venc.list.length)} vencidas` },
     { key: 'eq', label: 'Equipe', render: (r) => r.equipe, sort: (r) => r.equipe },
     { key: 'b', label: 'Base', render: (r) => r.base, sort: (r) => r.base },
-    { key: 'nc', label: 'Não conformidade', render: (r) => <span title={r.naoConformidade}>{short(r.naoConformidade, 70)}{r.itens > 1 && <span className="ml-1 text-muted"> +{r.itens - 1}</span>}</span> },
+    { key: 'nc', label: 'Não conformidade', render: (r) => <span title={r.naoConformidade}>{short(r.naoConformidade, 70)}</span> },
     { key: 'l', label: 'Lançamento', align: 'center', render: (r) => fmtDate(r.lancamento), sort: (r) => r.lancamento },
     { key: 'v', label: 'Venceu em', align: 'center', render: (r) => fmtDate(r.vencimento), sort: (r) => r.vencimento },
     { key: 'a', label: 'Atraso', align: 'center', render: (r) => <span className="inline-flex rounded-full bg-bad/15 px-2 py-0.5 text-[11px] font-bold text-bad">{r.atraso} {r.atraso === 1 ? 'dia útil' : 'dias úteis'}</span>, sort: (r) => r.atraso },
@@ -96,7 +96,7 @@ export function Overview() {
         )}
         {venc.semPrazo > 0 && (
           <p className="px-3 pb-2 text-[11px] text-muted">
-            {fmtNum(venc.semPrazo)} {venc.semPrazo === 1 ? 'notificação em tratamento está' : 'notificações em tratamento estão'} sem data de lançamento ou prazo e não entram nesta conta.
+            {fmtNum(venc.semPrazo)} {venc.semPrazo === 1 ? 'item em tratamento está' : 'itens em tratamento estão'} sem data de lançamento ou prazo e não entram nesta conta.
           </p>
         )}
       </Panel>

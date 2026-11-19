@@ -100,34 +100,24 @@ export interface Vencida {
   base: string
   gerencia: string
   naoConformidade: string
-  itens: number
   valor: number
   lancamento: string
   vencimento: string
   atraso: number
 }
 
-/** Notificações vencidas (uma linha por nº; itens da mesma notificação ficam juntos) e quantas em tratamento ainda não têm como calcular. */
+/** Itens vencidos (uma linha por item/não conformidade, pois cada um tem o seu lançamento, prazo e resposta)
+ *  e quantos itens em tratamento ainda não têm como calcular o vencimento. */
 export function resumoVencidas(rows: Notificacao[], hoje: string) {
-  const map = new Map<string, Vencida>()
-  const semPrazo = new Set<string>()
+  const list: Vencida[] = []
+  let semPrazo = 0
   for (const n of rows) {
     if (n.tratado) continue
-    const key = n.notificacao != null ? `n${n.notificacao}` : n.id
-    if (vencimento(n) == null) { semPrazo.add(key); continue }
-    if (!isVencida(n, hoje)) continue
-    const venc = vencimento(n)!
-    const atraso = diasAtraso(n, hoje)
-    const cur = map.get(key)
-    if (!cur) {
-      map.set(key, { key, notificacao: n.notificacao, equipe: n.equipe, base: n.base, gerencia: n.gerencia, naoConformidade: n.naoConformidade, itens: 1, valor: n.valor, lancamento: n.dataLancamento!, vencimento: venc, atraso })
-    } else {
-      cur.itens++
-      cur.valor += n.valor
-      if (venc < cur.vencimento) { cur.vencimento = venc; cur.lancamento = n.dataLancamento!; cur.atraso = atraso }
-    }
+    const venc = vencimento(n)
+    if (venc == null) { semPrazo++; continue }
+    if (venc >= hoje) continue
+    list.push({ key: n.id, notificacao: n.notificacao, equipe: n.equipe, base: n.base, gerencia: n.gerencia, naoConformidade: n.naoConformidade, valor: n.valor, lancamento: n.dataLancamento!, vencimento: venc, atraso: diasUteisEntre(venc, hoje) })
   }
-  for (const key of map.keys()) semPrazo.delete(key)
-  const list = [...map.values()].sort((a, b) => b.atraso - a.atraso || (a.notificacao ?? 0) - (b.notificacao ?? 0))
-  return { list, semPrazo: semPrazo.size }
+  list.sort((a, b) => b.atraso - a.atraso || (a.notificacao ?? 0) - (b.notificacao ?? 0))
+  return { list, semPrazo }
 }

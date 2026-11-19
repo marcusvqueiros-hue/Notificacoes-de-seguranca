@@ -9,7 +9,7 @@ import { DataTable, type Col } from '../components/DataTable'
 import { Badge } from './Overview'
 import { matchRows, planCleanup } from '../lib/dedupe'
 import { CollaboratorInput } from '../components/CollaboratorInput'
-import { anexoContagem, anexoDelete, anexoGet, anexoList, anexoSave, obsList, obsSave, openAttachment, type Anexo, type Obs, type PdfKind } from '../lib/extras'
+import { anexoContagem, anexoDelete, anexoGet, anexoList, anexoSave, obsList, obsSave, openAttachment, type Anexo, type AnexoRef, type Obs, type PdfKind } from '../lib/extras'
 import { NO_CHANGE, PdfSlot, type PdfChange } from '../components/PdfSlot'
 import { diasAtraso, hojeIso, isVencida, vencimento } from '../lib/prazo'
 import type { Notificacao, NotificacaoInput } from '../lib/types'
@@ -26,7 +26,7 @@ function Datalist({ id, options }: { id: string; options: string[] }) {
 
 function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
   initial: NotificacaoInput
-  pdfNums: Record<PdfKind, Record<number, number>>
+  pdfNums: Record<PdfKind, Record<string, number>>
   obsMap: Record<string, Obs>
   onSaved: () => void
   onDone: () => void
@@ -43,7 +43,11 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
   const [obs, setObs] = useState(obsInit)
   const [pdfs, setPdfs] = useState<Record<PdfKind, PdfChange>>({ notificacao: NO_CHANGE, resposta: NO_CHANGE })
   const num = f.notificacao
-  const cnt = (k: PdfKind) => (num != null ? pdfNums[k][num] ?? 0 : 0)
+  // arquivos da notificação: pelo Nº (todos os itens compartilham); resposta: só deste item
+  const anchorN: AnexoRef | null = num != null ? { kind: 'notificacao', numero: num } : null
+  const anchorR: AnexoRef | null = initial.id ? { kind: 'resposta', item: initial.id } : null
+  const cntN = num != null ? pdfNums.notificacao[num] ?? 0 : 0
+  const cntR = initial.id ? pdfNums.resposta[initial.id] ?? 0 : 0
   const obsMeta = num != null ? obsMap[String(num)] : undefined
   const hoje = hojeIso()
   const venc = vencimento(f)
@@ -68,25 +72,25 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
 
   async function submit(e: FormEvent) {
     e.preventDefault()
-    if ((pdfs.notificacao.add.length || pdfs.resposta.add.length || obs.trim()) && num == null) {
-      notify('Informe o nº da notificação para gravar os anexos e as observações.', 'err')
+    if ((pdfs.notificacao.add.length || obs.trim()) && num == null) {
+      notify('Informe o nº da notificação para gravar os arquivos da notificação e as observações.', 'err')
       return
     }
     setBusy(true)
     try {
-      await saveRow({ ...f, eletricistas: elet })
+      const saved = await saveRow({ ...f, eletricistas: elet })
       let extraErr = ''
-      if (num != null) {
-        try {
-          for (const k of ['notificacao', 'resposta'] as PdfKind[]) {
-            const p = pdfs[k]
-            for (const id of p.removeIds) await anexoDelete(session.token, id)
-            for (const file of p.add) await anexoSave(session.token, num, file, k)
-          }
+      try {
+        if (num != null) {
+          for (const id of pdfs.notificacao.removeIds) await anexoDelete(session.token, id)
+          for (const file of pdfs.notificacao.add) await anexoSave(session.token, { kind: 'notificacao', numero: num }, file)
           if (obs.trim() !== obsInit.trim()) await obsSave(session.token, num, obs, session.username)
-        } catch (ex) {
-          extraErr = (ex as Error).message
         }
+        // resposta: grava no item (usa o id do item recém-salvo, que também vale para item novo)
+        for (const id of pdfs.resposta.removeIds) await anexoDelete(session.token, id)
+        for (const file of pdfs.resposta.add) await anexoSave(session.token, { kind: 'resposta', item: saved.id }, file)
+      } catch (ex) {
+        extraErr = (ex as Error).message
       }
       onSaved()
       if (extraErr) notify(`Notificação salva, mas o anexo/observação não foi gravado: ${extraErr}`, 'err')
@@ -142,8 +146,8 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
 
       <div className="col-span-2 md:col-span-4">
         <div className="grid gap-3 md:grid-cols-2">
-          <PdfSlot label="Notificação (PDF ou imagem)" kind="notificacao" num={num} count={cnt('notificacao')} value={pdfs.notificacao} onChange={(v) => setPdfs((p) => ({ ...p, notificacao: v }))} token={session.token} onError={(m) => notify(m, 'err')} />
-          <PdfSlot label="Resposta da notificação (PDF ou imagem)" kind="resposta" num={num} count={cnt('resposta')} value={pdfs.resposta} onChange={(v) => setPdfs((p) => ({ ...p, resposta: v }))} token={session.token} onError={(m) => notify(m, 'err')} />
+          <PdfSlot label="Notificação (PDF ou imagem)" kind="notificacao" anchor={anchorN} count={cntN} hint={num != null ? `Vale para todos os itens (não conformidades) da notificação ${num}.` : 'Vale para todos os itens da mesma notificação.'} value={pdfs.notificacao} onChange={(v) => setPdfs((p) => ({ ...p, notificacao: v }))} token={session.token} onError={(m) => notify(m, 'err')} />
+          <PdfSlot label="Resposta (PDF ou imagem)" kind="resposta" anchor={anchorR} count={cntR} hint="Vale só para este item (esta não conformidade): cada item tem a sua resposta." value={pdfs.resposta} onChange={(v) => setPdfs((p) => ({ ...p, resposta: v }))} token={session.token} onError={(m) => notify(m, 'err')} />
         </div>
       </div>
 
@@ -184,7 +188,7 @@ export function Records() {
   const [del, setDel] = useState<Notificacao | null>(null)
   const [importing, setImporting] = useState(false)
   const file = useRef<HTMLInputElement>(null)
-  const [pdfNums, setPdfNums] = useState<Record<PdfKind, Record<number, number>>>({ notificacao: {}, resposta: {} })
+  const [pdfNums, setPdfNums] = useState<Record<PdfKind, Record<string, number>>>({ notificacao: {}, resposta: {} })
   const [obsMap, setObsMap] = useState<Record<string, Obs>>({})
   const hoje = hojeIso()
 
@@ -193,7 +197,7 @@ export function Records() {
     try {
       const [p, r, o] = await Promise.all([
         anexoContagem(session.token, 'notificacao'),
-        anexoContagem(session.token, 'resposta'), // exige o SQL 07_anexos_multiplos.sql
+        anexoContagem(session.token, 'resposta'), // por item: exige o SQL 10_resposta_por_item.sql
         obsList(session.token),
       ])
       setPdfNums({ notificacao: p, resposta: r })
@@ -229,7 +233,7 @@ export function Records() {
     }
   }
 
-  const [picker, setPicker] = useState<{ n: number; kind: PdfKind; list: Anexo[] } | null>(null)
+  const [picker, setPicker] = useState<{ title: string; list: Anexo[] } | null>(null)
   async function openAnexo(id: number) {
     try {
       const p = await anexoGet(session!.token, id)
@@ -238,14 +242,16 @@ export function Records() {
     } catch (e) { notify((e as Error).message, 'err') }
   }
   /** Um arquivo abre direto; vários abrem uma lista para escolher. */
-  async function openAnexosOf(n: number, kind: PdfKind) {
+  async function openAnexosOf(ref: AnexoRef, title: string) {
     try {
-      const list = await anexoList(session!.token, n, kind)
+      const list = await anexoList(session!.token, ref)
       if (list.length === 1) await openAnexo(list[0].id)
-      else if (list.length > 1) setPicker({ n, kind, list })
+      else if (list.length > 1) setPicker({ title, list })
       else notify('Arquivo não encontrado.', 'err')
     } catch (e) { notify((e as Error).message, 'err') }
   }
+
+  const countOf = (r: Notificacao, kind: PdfKind) => (kind === 'resposta' ? pdfNums.resposta[r.id] ?? 0 : r.notificacao != null ? pdfNums.notificacao[r.notificacao] ?? 0 : 0)
 
   const list = useMemo(() => {
     const t = dq.trim().toLowerCase()
@@ -281,9 +287,10 @@ export function Records() {
     ...(admin ? [
       ...(['notificacao', 'resposta'] as PdfKind[]).map((kind) => ({
         key: kind === 'resposta' ? 'resp' : 'pdf', label: kind === 'resposta' ? 'Resposta' : 'Anexo', align: 'center' as const,
-        sort: (r: Notificacao) => (r.notificacao != null ? pdfNums[kind][r.notificacao] ?? 0 : 0),
+        // arquivos da notificação: por Nº (compartilhados pelos itens); resposta: por item (linha)
+        sort: (r: Notificacao) => countOf(r, kind),
         render: (r: Notificacao) => {
-          const c = r.notificacao != null ? pdfNums[kind][r.notificacao] ?? 0 : 0
+          const c = countOf(r, kind)
           if (!c) return <span className="text-muted/40">—</span>
           const nome = kind === 'resposta' ? 'resposta' : 'notificação'
           return (
@@ -291,7 +298,7 @@ export function Records() {
               className={`inline-flex items-center gap-1 rounded-lg p-1.5 ${kind === 'resposta' ? 'text-good hover:bg-good/10' : 'text-info hover:bg-info/10'}`}
               aria-label={`Abrir ${c > 1 ? `os ${c} arquivos` : 'o arquivo'} da ${nome} ${r.notificacao}`}
               title={c > 1 ? `${c} arquivos da ${nome}` : `Abrir arquivo da ${nome} (PDF ou imagem)`}
-              onClick={(e) => { e.stopPropagation(); void openAnexosOf(r.notificacao!, kind) }}
+              onClick={(e) => { e.stopPropagation(); void openAnexosOf(kind === 'resposta' ? { kind, item: r.id } : { kind, numero: r.notificacao! }, `${kind === 'resposta' ? 'Resposta do item' : 'Arquivos da notificação'} ${r.notificacao ?? ''} · ${short(r.naoConformidade, 60)}`) }}
             >
               {kind === 'resposta' ? <MessageSquareReply size={15} /> : <FileText size={15} />}
               {c > 1 && <span className="text-[11px] font-bold">{c}</span>}
@@ -393,7 +400,7 @@ export function Records() {
       <Modal open={!!edit} onClose={() => setEdit(null)} title={edit?.id ? 'Editar notificação' : 'Nova notificação'} wide>
         {edit && <RecordForm initial={edit} pdfNums={pdfNums} obsMap={obsMap} onSaved={() => void loadExtras()} onDone={() => setEdit(null)} />}
       </Modal>
-      <Modal open={!!picker} onClose={() => setPicker(null)} title={picker ? `Arquivos da ${picker.kind === 'resposta' ? 'resposta' : 'notificação'} ${picker.n}` : ''}>
+      <Modal open={!!picker} onClose={() => setPicker(null)} title={picker?.title ?? ''}>
         {picker && (
           <ul className="space-y-2 text-sm">
             {picker.list.map((a) => (

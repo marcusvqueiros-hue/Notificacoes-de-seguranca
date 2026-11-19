@@ -44,7 +44,7 @@ interface State {
   toggleFilter: (k: FilterKey, v: string) => void
   setFilter: (k: FilterKey, v: string[]) => void
   clearFilters: () => void
-  saveRow: (n: NotificacaoInput) => Promise<void>
+  saveRow: (n: NotificacaoInput) => Promise<Notificacao>
   deleteRow: (id: string) => Promise<void>
   importRows: (rows: NotificacaoInput[]) => Promise<void>
   notify: (msg: string, kind?: 'ok' | 'err') => void
@@ -120,6 +120,7 @@ export const useStore = create<State>((set, get) => ({
       else rows.push(saved)
       return { rows }
     })
+    return saved
   },
   async deleteRow(id) {
     await api.remove(get().session!.token, id)

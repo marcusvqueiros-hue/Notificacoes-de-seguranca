@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ExternalLink, FileImage, FileText, Paperclip, Trash2, Undo2, X } from 'lucide-react'
-import { ANEXOS_MAX, PDF_MAX_BYTES, anexoGet, anexoList, isImageFile, isPdfFile, openAttachment, prepareAttachment, type Anexo, type PdfKind } from '../lib/extras'
+import { ANEXOS_MAX, PDF_MAX_BYTES, anexoGet, anexoKey, anexoList, isImageFile, isPdfFile, openAttachment, prepareAttachment, type Anexo, type AnexoRef, type PdfKind } from '../lib/extras'
 
 /** Alterações pendentes de um campo de anexos: arquivos novos e ids de arquivos já gravados a remover. */
 export interface PdfChange { add: File[]; removeIds: number[] }
@@ -10,12 +10,15 @@ const fmtSize = (b: number) => (b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(
 const isImg = (nome: string) => /\.(jpe?g|png)$/i.test(nome)
 
 /** Campo para anexar vários arquivos (PDF ou imagem JPG/PNG) ligados ao nº da notificação: adicionar, ver e remover. */
-export function PdfSlot({ label, kind, num, count, value, onChange, token, onError }: {
+export function PdfSlot({ label, kind, anchor, count, hint, value, onChange, token, onError }: {
   label: string
   kind: PdfKind
-  num: number | null
-  /** quantos arquivos já estão gravados para este nº */
+  /** onde os arquivos ficam gravados (Nº da notificação ou item); null enquanto ainda não existe (ex.: item novo) */
+  anchor: AnexoRef | null
+  /** quantos arquivos já estão gravados nesse lugar */
   count: number
+  /** explicação curta de a quem os arquivos valem */
+  hint?: string
   value: PdfChange
   onChange: (v: PdfChange) => void
   token: string
@@ -28,10 +31,10 @@ export function PdfSlot({ label, kind, num, count, value, onChange, token, onErr
 
   useEffect(() => {
     let off = false
-    if (num == null || !count) { setSaved([]); return }
-    anexoList(token, num, kind).then((l) => { if (!off) setSaved(l) }).catch((e) => onError((e as Error).message))
+    if (!anchor || !count) { setSaved([]); return }
+    anexoList(token, anchor).then((l) => { if (!off) setSaved(l) }).catch((e) => onError((e as Error).message))
     return () => { off = true }
-  }, [num, count, kind, token]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [anexoKey(anchor), count, token]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const kept = saved.filter((a) => !value.removeIds.includes(a.id))
   const total = kept.length + value.add.length
@@ -107,7 +110,8 @@ export function PdfSlot({ label, kind, num, count, value, onChange, token, onErr
           </label>
           {total > 0 && <span className="text-[11px] text-muted">{total} de {ANEXOS_MAX} arquivos da {noun}</span>}
         </div>
-        {num == null && value.add.length > 0 && <p className="mt-2 text-xs text-warn">Preencha o nº da notificação: os arquivos são gravados junto com ele.</p>}
+        {kind === 'notificacao' && !anchor && value.add.length > 0 && <p className="mt-2 text-xs text-warn">Preencha o nº da notificação: os arquivos são gravados junto com ele.</p>}
+        {hint && <p className="mt-2 text-[11px] text-muted">{hint}</p>}
         {err && <p role="alert" className="mt-2 text-xs text-bad">{err}</p>}
       </div>
     </div>
