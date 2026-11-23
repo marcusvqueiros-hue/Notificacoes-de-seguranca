@@ -24,6 +24,9 @@ function Datalist({ id, options }: { id: string; options: string[] }) {
   return <datalist id={id}>{options.map((o) => <option key={o} value={o} />)}</datalist>
 }
 
+/** Campos que são da notificação (iguais em todos os itens do mesmo Nº) e podem ser preenchidos sozinhos. */
+const AUTOFILL = ['data', 'inspecao', 'inspetor', 'equipe', 'base', 'gerencia', 'coordenador', 'processo'] as const
+
 function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
   initial: NotificacaoInput
   pdfNums: Record<PdfKind, Record<string, number>>
@@ -69,7 +72,25 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
     colab: uniq(rows, 'colaborador'),
   }), [rows])
 
-  const set = <K extends keyof NotificacaoInput>(k: K, v: NotificacaoInput[K]) => setF((s) => ({ ...s, [k]: v }))
+  // campos que a pessoa mexeu à mão: o preenchimento automático não sobrescreve
+  const touched = useRef(new Set<string>())
+  const set = <K extends keyof NotificacaoInput>(k: K, v: NotificacaoInput[K]) => { touched.current.add(k); setF((s) => ({ ...s, [k]: v })) }
+
+  // Item novo com um Nº que já existe: copia os dados da notificação (data, inspeção, inspetor, equipe, base, gerência, coordenador, processo)
+  const [auto, setAuto] = useState<{ numero: number; itens: number } | null>(null)
+  useEffect(() => {
+    if (initial.id || num == null) { setAuto(null); return }
+    const t = setTimeout(() => {
+      const same = rows.filter((r) => r.notificacao === num)
+      if (!same.length) { setAuto(null); return }
+      const src = same.reduce((a, b) => (b.data >= a.data ? b : a)) // o item mais recente da notificação
+      const patch: Record<string, unknown> = {}
+      for (const k of AUTOFILL) if (!touched.current.has(k)) patch[k] = src[k]
+      setF((s) => ({ ...s, ...patch }))
+      setAuto({ numero: num, itens: same.length })
+    }, 350) // espera terminar de digitar o número
+    return () => clearTimeout(t)
+  }, [num, rows, initial.id])
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -111,6 +132,11 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
       <Field label="Data"><input required type="date" className="input" value={f.data} onChange={(e) => set('data', e.target.value)} /></Field>
       <Field label="Nº da inspeção"><input type="number" className="input" value={f.inspecao ?? ''} onChange={(e) => set('inspecao', e.target.value ? Number(e.target.value) : null)} /></Field>
       <Field label="Inspetor"><input list="dl-insp" className="input" value={f.inspetor} onChange={(e) => set('inspetor', e.target.value.toUpperCase())} /></Field>
+      {auto && (
+        <p className="col-span-2 -mt-1 text-[11px] text-good md:col-span-4" role="status">
+          Dados preenchidos a partir da notificação {auto.numero} ({auto.itens} {auto.itens === 1 ? 'item já cadastrado' : 'itens já cadastrados'}): data, inspeção, inspetor, equipe, base, gerência, coordenador e processo. Pode alterar qualquer campo.
+        </p>
+      )}
       <Field label="Equipe"><input required list="dl-eq" className="input" value={f.equipe} onChange={(e) => set('equipe', e.target.value.toUpperCase())} /></Field>
       <Field label="Base"><input required list="dl-base" className="input" value={f.base} onChange={(e) => set('base', e.target.value.toUpperCase())} /></Field>
       <Field label="Gerência"><input required list="dl-ger" className="input" value={f.gerencia} onChange={(e) => set('gerencia', e.target.value.toUpperCase())} /></Field>
