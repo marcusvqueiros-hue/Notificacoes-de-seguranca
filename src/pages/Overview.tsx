@@ -78,7 +78,7 @@ export function Overview() {
 
       <Panel
         title="Notificações vencidas"
-        subtitle="Em tratamento com o prazo vencido · dias úteis a partir da data de lançamento, sem fins de semana e feriados nacionais"
+        subtitle="Em tratamento com o prazo vencido · dias úteis contados a partir da data de lançamento (o dia do lançamento conta), sem fins de semana e feriados nacionais"
         className={venc.list.length ? 'border-bad/40' : ''}
         action={
           <div className="flex items-center gap-2" data-snap-ignore="1">

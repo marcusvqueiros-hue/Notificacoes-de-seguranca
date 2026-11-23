@@ -1,9 +1,10 @@
 import type { Notificacao } from './types'
 
 /**
- * Prazo de vencimento em DIAS ÚTEIS, contado a partir da data de lançamento:
- * o dia do lançamento não conta (o dia 1 é o próximo dia útil) e sábados, domingos e feriados nacionais são pulados.
- * Feriados estaduais e municipais não entram. Vencida = ainda não tratada e hoje depois do vencimento.
+ * Prazo de vencimento em DIAS ÚTEIS, contado a partir da data de lançamento: o próprio dia do lançamento conta como o dia 1
+ * (se cair em fim de semana ou feriado, o dia 1 é o primeiro dia útil depois). Sábados, domingos e feriados nacionais são pulados;
+ * feriados estaduais e municipais não entram. Ex.: lançada na segunda-feira com prazo de 5 dias úteis vence na sexta-feira.
+ * Vencida = ainda não tratada e hoje depois do vencimento (no dia do vencimento ainda está no prazo).
  */
 
 const DAY = 86_400_000
@@ -74,10 +75,17 @@ export function diasUteisEntre(de: string, ate: string): number {
 
 type ComPrazo = Pick<Notificacao, 'dataLancamento' | 'dias'>
 
+/** Último dia do prazo: `dias` dias úteis contando o dia do lançamento como o 1º. */
+export function vencimentoDe(lancamento: string, dias: number): string {
+  let d = parse(lancamento)
+  while (!isDiaUtil(d)) d = new Date(d.getTime() + DAY) // lançada em dia não útil: o dia 1 é o próximo dia útil
+  return somarDiasUteis(toIso(d), Math.max(0, Math.floor(dias) - 1))
+}
+
 /** Data de vencimento, ou null quando falta a data de lançamento ou o prazo. */
 export function vencimento(n: ComPrazo): string | null {
   if (!n.dataLancamento || n.dias == null) return null
-  return somarDiasUteis(n.dataLancamento, n.dias)
+  return vencimentoDe(n.dataLancamento, n.dias)
 }
 
 /** Vencida: não tratada e com o vencimento já passado (no dia do vencimento ainda está no prazo). */

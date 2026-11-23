@@ -60,7 +60,7 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
     <span className="text-muted">Notificação tratada: não vence.</span>
   ) : venc ? (
     <span className={atraso ? 'font-semibold text-bad' : 'text-muted'}>
-      Vence em {fmtDate(venc)} ({f.dias} {f.dias === 1 ? 'dia útil' : 'dias úteis'} após o lançamento, sem sábados, domingos e feriados nacionais)
+      Vence em {fmtDate(venc)} ({f.dias} {f.dias === 1 ? 'dia útil' : 'dias úteis'} contando o dia do lançamento, sem sábados, domingos e feriados nacionais)
       {atraso > 0 && ` · vencida há ${atraso} ${atraso === 1 ? 'dia útil' : 'dias úteis'}`}
     </span>
   ) : (
