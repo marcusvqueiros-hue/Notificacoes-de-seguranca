@@ -27,6 +27,7 @@ export function Overview() {
   const toggle = useStore((s) => s.toggleFilter)
   const setPage = useStore((s) => s.setPage)
   const setFilter = useStore((s) => s.setFilter)
+  const obs = useStore((s) => s.obs)
   const isAdmin = useStore((s) => s.session?.role === 'admin')
   const p = usePal()
 
@@ -61,6 +62,7 @@ export function Overview() {
     { key: 'base', label: 'Base', render: (r) => r.base, sort: (r) => r.base },
     { key: 'ger', label: 'Gerência', render: (r) => r.gerencia, sort: (r) => r.gerencia },
     { key: 'nc', label: 'Não conformidade', render: (r) => <span title={r.naoConformidade}>{short(r.naoConformidade, 80)}</span> },
+    { key: 'obs', label: 'Observação', render: (r) => (obs[r.id] ? <span title={obs[r.id].texto}>{short(obs[r.id].texto, 90)}</span> : <span className="text-muted/40">—</span>), sort: (r) => obs[r.id]?.texto ?? '' },
     { key: 'valor', label: 'Multa', align: 'right', render: (r) => fmtBRL(r.valor), sort: (r) => r.valor, total: fmtBRL(k.valor) },
     { key: 'trat', label: 'Tratado', align: 'center', render: (r) => <Badge ok={r.tratado} />, sort: (r) => (r.tratado ? 1 : 0) },
   ]

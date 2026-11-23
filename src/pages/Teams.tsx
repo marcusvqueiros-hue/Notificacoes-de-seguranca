@@ -21,6 +21,7 @@ export function Teams() {
   const rein = teams.filter((t) => t.notifs >= 3).length
   const maxV = Math.max(1, ...teams.map((t) => t.valor))
   const detail = filters.equipe.length ? filtered : []
+  const obs = useStore((s) => s.obs)
 
   const cols: Col<Group>[] = [
     { key: 'eq', label: 'Equipe', render: (g) => <b>{g.key}</b>, sort: (g) => g.key, total: `${teams.length} equipes` },
@@ -45,6 +46,7 @@ export function Teams() {
     { key: 'b', label: 'Base', render: (r) => r.base },
     { key: 'g', label: 'Gerência', render: (r) => r.gerencia },
     { key: 'n', label: 'Não conformidade', render: (r) => <span title={r.naoConformidade}>{short(r.naoConformidade, 90)}</span> },
+    { key: 'o', label: 'Observação', render: (r) => (obs[r.id] ? <span title={obs[r.id].texto}>{short(obs[r.id].texto, 90)}</span> : <span className="text-muted/40">—</span>), sort: (r) => obs[r.id]?.texto ?? '' },
     { key: 'v', label: 'Multa', align: 'right', render: (r) => fmtBRL(r.valor), sort: (r) => r.valor },
     { key: 't', label: 'Tratado', align: 'center', render: (r) => <Badge ok={r.tratado} /> },
   ]

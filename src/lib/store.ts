@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { EMPTY_FILTERS, type FilterKey, type Filters, type Notificacao, type NotificacaoInput, type Session } from './types'
 import * as api from './data'
+import { obsList, type Obs } from './extras'
 
 export type Page = 'overview' | 'teams' | 'people' | 'heatmap' | 'insights' | 'records' | 'users'
 export type Theme = 'light' | 'dark'
@@ -26,6 +27,8 @@ interface State {
   theme: Theme
   page: Page
   rows: Notificacao[]
+  /** observação de cada item, por id do item (visível para todos os usuários) */
+  obs: Record<string, Obs>
   loading: boolean
   error: string | null
   filters: Filters
@@ -38,6 +41,7 @@ interface State {
   changePassword: (oldPass: string, newPass: string) => Promise<void>
   signOut: () => void
   load: () => Promise<void>
+  loadObs: () => Promise<void>
   setTheme: (t: Theme) => void
   setPage: (p: Page) => void
   toggleSidebar: () => void
@@ -56,6 +60,7 @@ export const useStore = create<State>((set, get) => ({
   theme: readTheme(),
   page: 'overview',
   rows: [],
+  obs: {},
   loading: false,
   error: null,
   filters: EMPTY_FILTERS,
@@ -80,7 +85,7 @@ export const useStore = create<State>((set, get) => ({
     const s = get().session
     if (s) void api.logout(s.token).catch(() => undefined)
     sessionStorage.removeItem(SESSION_KEY)
-    set({ session: null, loginPass: null, rows: [], filters: EMPTY_FILTERS, page: 'overview' })
+    set({ session: null, loginPass: null, rows: [], obs: {}, filters: EMPTY_FILTERS, page: 'overview' })
   },
   async load() {
     const s = get().session
@@ -88,11 +93,19 @@ export const useStore = create<State>((set, get) => ({
     set({ loading: true, error: null })
     try {
       set({ rows: await api.listAll(s.token), loading: false })
+      void get().loadObs()
     } catch (e) {
       const msg = (e as Error).message
       if (/sessão inválida/i.test(msg)) get().signOut()
       set({ loading: false, error: msg })
     }
+  },
+  async loadObs() {
+    const s = get().session
+    if (!s) return
+    try {
+      set({ obs: await obsList(s.token) })
+    } catch { /* sem observações (ou o SQL 12 ainda não foi executado para quem não é administrador): segue sem elas */ }
   },
   setTheme(t) {
     try { localStorage.setItem('cgb-theme', t) } catch { /* ignore */ }

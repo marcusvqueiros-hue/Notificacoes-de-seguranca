@@ -9,7 +9,7 @@ import { DataTable, type Col } from '../components/DataTable'
 import { Badge } from './Overview'
 import { matchRows, planCleanup } from '../lib/dedupe'
 import { CollaboratorInput } from '../components/CollaboratorInput'
-import { anexoContagem, anexoDelete, anexoGet, anexoList, anexoSave, obsList, obsSave, openAttachment, type Anexo, type AnexoRef, type Obs, type PdfKind } from '../lib/extras'
+import { anexoContagem, anexoDelete, anexoGet, anexoList, anexoSave, obsSave, openAttachment, type Anexo, type AnexoRef, type Obs, type PdfKind } from '../lib/extras'
 import { NO_CHANGE, PdfSlot, type PdfChange } from '../components/PdfSlot'
 import { diasAtraso, hojeIso, isVencida, vencimento } from '../lib/prazo'
 import type { Notificacao, NotificacaoInput } from '../lib/types'
@@ -185,7 +185,7 @@ function RecordForm({ initial, pdfNums, obsMap, onSaved, onDone }: {
             rows={3}
             maxLength={4000}
             className="input"
-            placeholder="Observações sobre este item (visível só para administradores)…"
+            placeholder="Observações sobre este item (visível para todos os usuários)…"
             value={obs}
             onChange={(e) => setObs(e.target.value)}
           />
@@ -217,20 +217,19 @@ export function Records() {
   const [importing, setImporting] = useState(false)
   const file = useRef<HTMLInputElement>(null)
   const [pdfNums, setPdfNums] = useState<Record<PdfKind, Record<string, number>>>({ notificacao: {}, resposta: {} })
-  const [obsMap, setObsMap] = useState<Record<string, Obs>>({})
+  const obsMap = useStore((s) => s.obs)
+  const loadObs = useStore((s) => s.loadObs)
   const hoje = hojeIso()
 
   const loadExtras = useCallback(async () => {
     if (!session) return
     try {
-      const [p, r, o] = await Promise.all([
+      const [p, r] = await Promise.all([
         anexoContagem(session.token, 'notificacao'),
         anexoContagem(session.token, 'resposta'), // por item: exige o SQL 10_resposta_por_item.sql
-        obsList(session.token),
       ])
       setPdfNums({ notificacao: p, resposta: r })
-      setObsMap(o)
-    } catch { /* anexos/observações exigem os SQLs 04 a 07; a lista continua funcionando */ }
+    } catch { /* anexos exigem os SQLs 04 a 10; a lista continua funcionando */ }
   }, [session])
   useEffect(() => { if (admin) void loadExtras() }, [admin, loadExtras])
 
@@ -426,7 +425,7 @@ export function Records() {
       </Panel>
 
       <Modal open={!!edit} onClose={() => setEdit(null)} title={edit?.id ? 'Editar notificação' : 'Nova notificação'} wide>
-        {edit && <RecordForm initial={edit} pdfNums={pdfNums} obsMap={obsMap} onSaved={() => void loadExtras()} onDone={() => setEdit(null)} />}
+        {edit && <RecordForm initial={edit} pdfNums={pdfNums} obsMap={obsMap} onSaved={() => { void loadExtras(); void loadObs() }} onDone={() => setEdit(null)} />}
       </Modal>
       <Modal open={!!picker} onClose={() => setPicker(null)} title={picker?.title ?? ''}>
         {picker && (
